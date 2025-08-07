@@ -33,10 +33,6 @@ The simulator supports two modes of operation:
 - `echo` mode: the response contains the same text that was received in the request. For `/v1/chat/completions` the last message for the role=`user` is used.
 - `random` mode: the response is randomly chosen from a set of pre-defined sentences.
 
-Additionally, the simulator can inject OpenAI API compatible error responses for testing error handling using the `failure-injection-rate` parameter.
-
-Additionally, the simulator can inject OpenAI API compatible error responses for testing error handling using the `failure-injection-rate` parameter.
-
 Timing of the response is defined by the `time-to-first-token` and `inter-token-latency` parameters. In case P/D is enabled for a request, `kv-cache-transfer-latency` will be used instead of `time-to-first-token`.
 
 For a request with `stream=true`: `time-to-first-token` or `kv-cache-transfer-latency` defines the delay before the first token is returned, `inter-token-latency` defines the delay between subsequent tokens in the stream. 
@@ -126,8 +122,6 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `tokenizers-cache-dir`: the directory for caching tokenizers
 - `hash-seed`: seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)
 - `zmq-endpoint`: ZMQ address to publish events
-- `failure-injection-rate`: probability (0-100) of injecting failures when in failure mode, optional, default is 10
-- `failure-types`: list of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found), optional, if empty all types are used
 
 In addition, as we are using klog, the following parameters are available:
 - `add_dir_header`: if true, adds the file directory to the header of the log messages

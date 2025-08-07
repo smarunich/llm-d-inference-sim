@@ -47,17 +47,15 @@ func NewKVCacheHelper(config *common.Configuration, logger logr.Logger) (*KVCach
 		tokenizationConfig.TokenizersCacheDir = config.TokenizersCacheDir
 	}
 	tokenizer, err := tokenization.NewCachedHFTokenizer(tokenizationConfig.HFTokenizerConfig)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tokenizer: %w", err)
 	}
-	blockCache, err := newBlockCache(config, logger)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create block cache: %w", err)
-	}
+
 	return &KVCacheHelper{
 		tokenizer:       tokenizer,
 		tokensProcessor: tokensProcessor,
-		blockCache:      blockCache,
+		blockCache:      newBlockCache(config.KVCacheSize, logger),
 		logger:          logger,
 	}, nil
 }
