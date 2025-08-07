@@ -31,6 +31,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
+	"github.com/openai/openai-go/packages/param"
 	"github.com/valyala/fasthttp/fasthttputil"
 	"k8s.io/klog/v2"
 )
@@ -43,8 +44,7 @@ const invalidMaxTokensErrMsg = "Max completion tokens and max tokens should be p
 var userMsgTokens int64
 
 func startServer(ctx context.Context, mode string) (*http.Client, error) {
-	// Disable failure injection for tests by default
-	return startServerWithArgs(ctx, mode, []string{"cmd", "--model", model, "--mode", mode, "--failure-injection-rate", "0"})
+	return startServerWithArgs(ctx, mode, nil)
 }
 
 func startServerWithArgs(ctx context.Context, mode string, args []string) (*http.Client, error) {
@@ -56,7 +56,7 @@ func startServerWithArgs(ctx context.Context, mode string, args []string) (*http
 	if args != nil {
 		os.Args = args
 	} else {
-		os.Args = []string{"cmd", "--model", model, "--mode", mode, "--failure-injection-rate", "0"}
+		os.Args = []string{"cmd", "--model", model, "--mode", mode}
 	}
 	logger := klog.Background()
 
@@ -120,7 +120,7 @@ var _ = Describe("Simulator", func() {
 					openai.UserMessage(userMessage),
 				},
 				Model:         model,
-				StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: openai.Bool(true)},
+				StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
 			}
 			stream := openaiclient.Chat.Completions.NewStreaming(ctx, params)
 			defer func() {
@@ -183,7 +183,7 @@ var _ = Describe("Simulator", func() {
 					OfString: openai.String(userMessage),
 				},
 				Model:         openai.CompletionNewParamsModel(model),
-				StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: openai.Bool(true)},
+				StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
 			}
 			stream := openaiclient.Completions.NewStreaming(ctx, params)
 			defer func() {
@@ -246,11 +246,11 @@ var _ = Describe("Simulator", func() {
 			// if maxTokens and maxCompletionTokens are passsed
 			// maxCompletionTokens is used
 			if maxTokens != 0 {
-				params.MaxTokens = openai.Int(int64(maxTokens))
+				params.MaxTokens = param.NewOpt(int64(maxTokens))
 				numTokens = maxTokens
 			}
 			if maxCompletionTokens != 0 {
-				params.MaxCompletionTokens = openai.Int(int64(maxCompletionTokens))
+				params.MaxCompletionTokens = param.NewOpt(int64(maxCompletionTokens))
 				numTokens = maxCompletionTokens
 			}
 			resp, err := openaiclient.Chat.Completions.New(ctx, params)
@@ -329,7 +329,7 @@ var _ = Describe("Simulator", func() {
 			}
 			numTokens := 0
 			if maxTokens != 0 {
-				params.MaxTokens = openai.Int(int64(maxTokens))
+				params.MaxTokens = param.NewOpt(int64(maxTokens))
 				numTokens = maxTokens
 			}
 			resp, err := openaiclient.Completions.New(ctx, params)

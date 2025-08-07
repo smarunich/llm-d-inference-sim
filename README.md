@@ -33,8 +33,6 @@ The simulator supports two modes of operation:
 - `echo` mode: the response contains the same text that was received in the request. For `/v1/chat/completions` the last message for the role=`user` is used.
 - `random` mode: the response is randomly chosen from a set of pre-defined sentences.
 
-Additionally, the simulator can inject OpenAI API compatible error responses for testing error handling using the `failure-injection-rate` parameter.
-
 Timing of the response is defined by the `time-to-first-token` and `inter-token-latency` parameters. In case P/D is enabled for a request, `kv-cache-transfer-latency` will be used instead of `time-to-first-token`.
 
 For a request with `stream=true`: `time-to-first-token` or `kv-cache-transfer-latency` defines the delay before the first token is returned, `inter-token-latency` defines the delay between subsequent tokens in the stream. 
@@ -118,14 +116,13 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `min-tool-call-array-param-length`: the minimum possible length of array parameters in a tool call, optional, defaults to 1
 - `tool-call-not-required-param-probability`: the probability to add a parameter, that is not required, in a tool call, optional, defaults to 50
 - `object-tool-call-not-required-field-probability`: the probability to add a field, that is not required, in an object in a tool call, optional, defaults to 50
+<!-- 
 - `enable-kvcache`: if true, the KV cache support will be enabled in the simulator. In this case, the KV cache will be simulated, and ZQM events will be published when a KV cache block is added or evicted. 
 - `kv-cache-size`: the maximum number of token blocks in kv cache
 - `block-size`: token block size for contiguous chunks of tokens, possible values: 8,16,32,64,128
 - `tokenizers-cache-dir`: the directory for caching tokenizers
 - `hash-seed`: seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)
 - `zmq-endpoint`: ZMQ address to publish events
-- `failure-injection-rate`: probability (0-100) of injecting failures, optional, default is 0
-- `failure-types`: list of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found), optional, if empty all types are used
 - `event-batch-size`: the maximum number of kv-cache events to be sent together, defaults to 16
 -->
 In addition, as we are using klog, the following parameters are available:
