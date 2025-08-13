@@ -34,14 +34,7 @@ const (
 	vLLMDefaultPort = 8000
 	ModeRandom      = "random"
 	ModeEcho        = "echo"
-	
-	// Failure type constants
-	FailureTypeRateLimit       = "rate_limit"
-	FailureTypeInvalidAPIKey   = "invalid_api_key"
-	FailureTypeContextLength   = "context_length"
-	FailureTypeServerError     = "server_error"
-	FailureTypeInvalidRequest  = "invalid_request"
-	FailureTypeModelNotFound   = "model_not_found"
+	ModeFailure     = "failure"
 )
 
 type Configuration struct {
@@ -228,8 +221,8 @@ func (c *Configuration) validate() error {
 		c.ServedModelNames = []string{c.Model}
 	}
 
-	if c.Mode != ModeEcho && c.Mode != ModeRandom {
-		return fmt.Errorf("invalid mode '%s', valid values are 'random' and 'echo'", c.Mode)
+	if c.Mode != ModeEcho && c.Mode != ModeRandom && c.Mode != ModeFailure {
+		return fmt.Errorf("invalid mode '%s', valid values are 'random', 'echo', and 'failure'", c.Mode)
 	}
 	if c.Port <= 0 {
 		return fmt.Errorf("invalid port '%d'", c.Port)
@@ -320,12 +313,12 @@ func (c *Configuration) validate() error {
 	}
 
 	validFailureTypes := map[string]bool{
-		FailureTypeRateLimit:      true,
-		FailureTypeInvalidAPIKey:  true,
-		FailureTypeContextLength:  true,
-		FailureTypeServerError:    true,
-		FailureTypeInvalidRequest: true,
-		FailureTypeModelNotFound:  true,
+		"rate_limit":        true,
+		"invalid_api_key":   true,
+		"context_length":    true,
+		"server_error":      true,
+		"invalid_request":   true,
+		"model_not_found":   true,
 	}
 	for _, failureType := range c.FailureTypes {
 		if !validFailureTypes[failureType] {
@@ -360,7 +353,7 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.IntVar(&config.MaxCPULoras, "max-cpu-loras", config.MaxCPULoras, "Maximum number of LoRAs to store in CPU memory")
 	f.IntVar(&config.MaxModelLen, "max-model-len", config.MaxModelLen, "Model's context window, maximum number of tokens in a single request including input and output")
 
-	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode: echo - returns the same text that was sent in the request, for chat completion returns the last message; random - returns random sentence from a bank of pre-defined sentences")
+	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode: echo - returns the same text that was sent in the request, for chat completion returns the last message; random - returns random sentence from a bank of pre-defined sentences; failure - randomly injects API errors")
 	f.IntVar(&config.InterTokenLatency, "inter-token-latency", config.InterTokenLatency, "Time to generate one token (in milliseconds)")
 	f.IntVar(&config.TimeToFirstToken, "time-to-first-token", config.TimeToFirstToken, "Time to first token (in milliseconds)")
 	f.IntVar(&config.KVCacheTransferLatency, "kv-cache-transfer-latency", config.KVCacheTransferLatency, "Time for KV-cache transfer from a remote vLLM (in milliseconds)")

@@ -29,9 +29,10 @@ In addition, it supports a subset of vLLM's Prometheus metrics. These metrics ar
 
 The simulated inference has no connection with the model and LoRA adapters specified in the command line parameters or via the /v1/load_lora_adapter HTTP REST endpoint. The /v1/models endpoint returns simulated results based on those same command line parameters and those loaded via the /v1/load_lora_adapter HTTP REST endpoint.
 
-The simulator supports two modes of operation:
+The simulator supports three modes of operation:
 - `echo` mode: the response contains the same text that was received in the request. For `/v1/chat/completions` the last message for the role=`user` is used.
 - `random` mode: the response is randomly chosen from a set of pre-defined sentences.
+- `failure` mode: randomly injects OpenAI API compatible error responses for testing error handling.
 
 Additionally, the simulator can inject OpenAI API compatible error responses for testing error handling using the `failure-injection-rate` parameter.
 
@@ -103,6 +104,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `mode`: the simulator mode, optional, by default `random`
     - `echo`: returns the same text that was sent in the request
     - `random`: returns a sentence chosen at random from a set of pre-defined sentences
+    - `failure`: randomly injects OpenAI API compatible error responses
 - `time-to-first-token`: the time to the first token (in milliseconds), optional, by default zero
 - `time-to-first-token-std-dev`: standard deviation for time before the first token will be returned, in milliseconds, optional, default is 0, can't be more than 30% of `time-to-first-token`, will not cause the actual time to first token to differ by more than 70% from `time-to-first-token`
 - `inter-token-latency`: the time to 'generate' each additional token (in milliseconds), optional, by default zero

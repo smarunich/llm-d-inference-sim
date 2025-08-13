@@ -220,6 +220,5 @@ type CompletionError struct {
 
 // ErrorResponse wraps the error in the expected OpenAI format
 type ErrorResponse struct {
-	Object string          `json:"object"`
-	Error  CompletionError `json:"error"`
+	Error CompletionError `json:"error"`
 }
