@@ -43,7 +43,8 @@ const invalidMaxTokensErrMsg = "Max completion tokens and max tokens should be p
 var userMsgTokens int64
 
 func startServer(ctx context.Context, mode string) (*http.Client, error) {
-	return startServerWithArgs(ctx, mode, nil)
+	// Disable failure injection for tests by default
+	return startServerWithArgs(ctx, mode, []string{"cmd", "--model", model, "--mode", mode, "--failure-injection-rate", "0"})
 }
 
 func startServerWithArgs(ctx context.Context, mode string, args []string) (*http.Client, error) {
@@ -55,7 +56,7 @@ func startServerWithArgs(ctx context.Context, mode string, args []string) (*http
 	if args != nil {
 		os.Args = args
 	} else {
-		os.Args = []string{"cmd", "--model", model, "--mode", mode}
+		os.Args = []string{"cmd", "--model", model, "--mode", mode, "--failure-injection-rate", "0"}
 	}
 	logger := klog.Background()
 
@@ -607,7 +608,6 @@ var _ = Describe("Simulator", func() {
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
-					"--mode", "failure",
 					"--failure-injection-rate", "100",
 				})
 				Expect(err).ToNot(HaveOccurred())
@@ -666,7 +666,6 @@ var _ = Describe("Simulator", func() {
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
-					"--mode", "failure",
 					"--failure-injection-rate", "100",
 					"--failure-types", "rate_limit",
 				})
@@ -703,7 +702,6 @@ var _ = Describe("Simulator", func() {
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
-					"--mode", "failure",
 					"--failure-injection-rate", "100",
 					"--failure-types", "invalid_api_key", "server_error",
 				})
@@ -744,7 +742,6 @@ var _ = Describe("Simulator", func() {
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
-					"--mode", "failure",
 					"--failure-injection-rate", "0",
 				})
 				Expect(err).ToNot(HaveOccurred())
@@ -776,7 +773,6 @@ var _ = Describe("Simulator", func() {
 					ctx := context.Background()
 					client, err := startServerWithArgs(ctx, "failure", []string{
 						"cmd", "--model", model, 
-						"--mode", "failure",
 						"--failure-injection-rate", "100",
 						"--failure-types", failureType,
 					})
@@ -828,7 +824,6 @@ var _ = Describe("Simulator", func() {
 				ctx := context.Background()
 				_, err := startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
-					"--mode", "failure",
 					"--failure-injection-rate", "-10",
 				})
 				Expect(err).To(HaveOccurred())
@@ -839,7 +834,6 @@ var _ = Describe("Simulator", func() {
 				ctx := context.Background()
 				_, err := startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
-					"--mode", "failure",
 					"--failure-injection-rate", "50",
 					"--failure-types", "invalid_type",
 				})
