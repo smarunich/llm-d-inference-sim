@@ -23,7 +23,7 @@ COPY . .
 
 # HuggingFace tokenizer bindings
 RUN mkdir -p lib
-RUN curl -L https://github.com/daulet/tokenizers/releases/download/v1.20.2/libtokenizers.${TARGETOS}-${TARGETARCH}.tar.gz | tar -xz -C lib
+RUN curl -L https://github.com/daulet/tokenizers/releases/download/v1.22.1/libtokenizers.${TARGETOS}-${TARGETARCH}.tar.gz | tar -xz -C lib
 RUN ranlib lib/*.a
 
 # Build

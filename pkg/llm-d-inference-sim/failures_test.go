@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package common_test
+package llmdinferencesim_test
 
 import (
 	"strings"
@@ -23,33 +23,27 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	llmdinferencesim "github.com/llm-d/llm-d-inference-sim/pkg/llm-d-inference-sim"
 )
 
 var _ = Describe("Failures", func() {
 	Describe("ShouldInjectFailure", func() {
-		It("should not inject failure when not in failure mode", func() {
+		It("should not inject failure when injection rate is 0", func() {
+			config := &common.Configuration{
+				Mode:                 common.ModeRandom,
+				FailureInjectionRate: 0,
+			}
+			Expect(llmdinferencesim.ShouldInjectFailure(config)).To(BeFalse())
+		})
+
+		It("should inject failure when injection rate is 100", func() {
 			config := &common.Configuration{
 				Mode:                 common.ModeRandom,
 				FailureInjectionRate: 100,
 			}
-			Expect(common.ShouldInjectFailure(config)).To(BeFalse())
+			Expect(llmdinferencesim.ShouldInjectFailure(config)).To(BeTrue())
 		})
 
-		It("should not inject failure when rate is 0", func() {
-			config := &common.Configuration{
-				Mode:                 common.ModeFailure,
-				FailureInjectionRate: 0,
-			}
-			Expect(common.ShouldInjectFailure(config)).To(BeFalse())
-		})
-
-		It("should inject failure when in failure mode with 100% rate", func() {
-			config := &common.Configuration{
-				Mode:                 common.ModeFailure,
-				FailureInjectionRate: 100,
-			}
-			Expect(common.ShouldInjectFailure(config)).To(BeTrue())
-		})
 	})
 
 	Describe("GetRandomFailure", func() {
@@ -58,7 +52,7 @@ var _ = Describe("Failures", func() {
 				Model:        "test-model",
 				FailureTypes: []string{},
 			}
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(BeNumerically(">=", 400))
 			Expect(failure.Message).ToNot(BeEmpty())
 			Expect(failure.ErrorType).ToNot(BeEmpty())
@@ -67,9 +61,9 @@ var _ = Describe("Failures", func() {
 		It("should return rate limit failure when specified", func() {
 			config := &common.Configuration{
 				Model:        "test-model",
-				FailureTypes: []string{"rate_limit"},
+				FailureTypes: []string{common.FailureTypeRateLimit},
 			}
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(Equal(429))
 			Expect(failure.ErrorType).To(Equal("rate_limit_exceeded"))
 			Expect(failure.ErrorCode).To(Equal("rate_limit_exceeded"))
@@ -78,9 +72,9 @@ var _ = Describe("Failures", func() {
 
 		It("should return invalid API key failure when specified", func() {
 			config := &common.Configuration{
-				FailureTypes: []string{"invalid_api_key"},
+				FailureTypes: []string{common.FailureTypeInvalidAPIKey},
 			}
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(Equal(401))
 			Expect(failure.ErrorType).To(Equal("invalid_request_error"))
 			Expect(failure.ErrorCode).To(Equal("invalid_api_key"))
@@ -89,9 +83,9 @@ var _ = Describe("Failures", func() {
 
 		It("should return context length failure when specified", func() {
 			config := &common.Configuration{
-				FailureTypes: []string{"context_length"},
+				FailureTypes: []string{common.FailureTypeContextLength},
 			}
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(Equal(400))
 			Expect(failure.ErrorType).To(Equal("invalid_request_error"))
 			Expect(failure.ErrorCode).To(Equal("context_length_exceeded"))
@@ -101,9 +95,9 @@ var _ = Describe("Failures", func() {
 
 		It("should return server error when specified", func() {
 			config := &common.Configuration{
-				FailureTypes: []string{"server_error"},
+				FailureTypes: []string{common.FailureTypeServerError},
 			}
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(Equal(503))
 			Expect(failure.ErrorType).To(Equal("server_error"))
 			Expect(failure.ErrorCode).To(Equal("server_error"))
@@ -112,9 +106,9 @@ var _ = Describe("Failures", func() {
 		It("should return model not found failure when specified", func() {
 			config := &common.Configuration{
 				Model:        "test-model",
-				FailureTypes: []string{"model_not_found"},
+				FailureTypes: []string{common.FailureTypeModelNotFound},
 			}
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(Equal(404))
 			Expect(failure.ErrorType).To(Equal("invalid_request_error"))
 			Expect(failure.ErrorCode).To(Equal("model_not_found"))
@@ -126,7 +120,7 @@ var _ = Describe("Failures", func() {
 				FailureTypes: []string{},
 			}
 			// This test is probabilistic since it randomly selects, but we can test structure
-			failure := common.GetRandomFailure(config)
+			failure := llmdinferencesim.GetRandomFailure(config)
 			Expect(failure.StatusCode).To(BeNumerically(">=", 400))
 			Expect(failure.ErrorType).ToNot(BeEmpty())
 		})
