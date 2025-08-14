@@ -199,7 +199,7 @@ func newConfig() *Configuration {
 		TokenBlockSize:     16,
 		ZMQEndpoint:        "tcp://localhost:5557",
 		EventBatchSize:     16,
-		FailureInjectionRate: 10,
+		FailureInjectionRate: 0,
 		FailureTypes:       []string{},
 	}
 }
