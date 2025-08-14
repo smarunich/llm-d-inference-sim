@@ -124,7 +124,7 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `tokenizers-cache-dir`: the directory for caching tokenizers
 - `hash-seed`: seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)
 - `zmq-endpoint`: ZMQ address to publish events
-- `failure-injection-rate`: probability (0-100) of injecting failures, optional, default is 10
+- `failure-injection-rate`: probability (0-100) of injecting failures, optional, default is 0
 - `failure-types`: list of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found), optional, if empty all types are used
 - `event-batch-size`: the maximum number of kv-cache events to be sent together, defaults to 16
 -->
