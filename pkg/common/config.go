@@ -314,7 +314,7 @@ func (c *Configuration) validate() error {
 	if c.EventBatchSize < 1 {
 		return errors.New("event batch size cannot less than 1")
 	}
-  
+ 
   if c.FailureInjectionRate < 0 || c.FailureInjectionRate > 100 {
 		return errors.New("failure injection rate should be between 0 and 100")
 	}
@@ -332,7 +332,6 @@ func (c *Configuration) validate() error {
 			return fmt.Errorf("invalid failure type '%s', valid types are: rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found", failureType)
 		}
 	}
-
 	return nil
 }
 
@@ -385,13 +384,14 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.HashSeed, "hash-seed", config.HashSeed, "Seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)")
 	f.StringVar(&config.ZMQEndpoint, "zmq-endpoint", config.ZMQEndpoint, "ZMQ address to publish events")
 	f.IntVar(&config.EventBatchSize, "event-batch-size", config.EventBatchSize, "Maximum number of kv-cache events to be sent together")
-	
+  
   f.IntVar(&config.FailureInjectionRate, "failure-injection-rate", config.FailureInjectionRate, "Probability (0-100) of injecting failures")
 
 	failureTypes := getParamValueFromArgs("failure-types")
 	var dummyFailureTypes multiString
 	f.Var(&dummyFailureTypes, "failure-types", "List of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found)")
 	f.Lookup("failure-types").NoOptDefVal = "dummy"
+
 
 	// These values were manually parsed above in getParamValueFromArgs, we leave this in order to get these flags in --help
 	var dummyString string
@@ -427,6 +427,13 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	}
 	if failureTypes != nil {
 		config.FailureTypes = failureTypes
+	}
+
+	if config.HashSeed == "" {
+		hashSeed := os.Getenv("PYTHONHASHSEED")
+		if hashSeed != "" {
+			config.HashSeed = hashSeed
+		}
 	}
 
 	if config.HashSeed == "" {
