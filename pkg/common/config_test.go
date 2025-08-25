@@ -298,6 +298,19 @@ var _ = Describe("Simulator configuration", func() {
 			args: []string{"cmd", "--event-batch-size", "-35",
 				"--config", "../../manifests/config.yaml"},
 		},
+		{
+			name: "invalid failure injection rate > 100",
+			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "150"},
+		},
+		{
+			name: "invalid failure injection rate < 0",
+			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "-10"},
+		},
+		{
+			name: "invalid failure type",
+			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "50",
+				"--failure-types", "invalid_type"},
+		},
 	}
 
 	for _, test := range invalidTests {

@@ -667,7 +667,7 @@ var _ = Describe("Simulator", func() {
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
 					"--failure-injection-rate", "100",
-					"--failure-types", "rate_limit",
+					"--failure-types", common.FailureTypeRateLimit,
 				})
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -703,7 +703,7 @@ var _ = Describe("Simulator", func() {
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model, 
 					"--failure-injection-rate", "100",
-					"--failure-types", "invalid_api_key", "server_error",
+					"--failure-types", common.FailureTypeInvalidAPIKey, common.FailureTypeServerError,
 				})
 				Expect(err).ToNot(HaveOccurred())
 			})
@@ -800,46 +800,14 @@ var _ = Describe("Simulator", func() {
 					// Note: OpenAI Go client doesn't directly expose the error code field, 
 					// but we can verify via status code and type
 				},
-				Entry("rate_limit", "rate_limit", 429, "rate_limit_exceeded", "rate_limit_exceeded"),
-				Entry("invalid_api_key", "invalid_api_key", 401, "invalid_request_error", "invalid_api_key"),
-				Entry("context_length", "context_length", 400, "invalid_request_error", "context_length_exceeded"),
-				Entry("server_error", "server_error", 503, "server_error", "server_error"),
-				Entry("invalid_request", "invalid_request", 400, "invalid_request_error", "invalid_request_error"),
-				Entry("model_not_found", "model_not_found", 404, "invalid_request_error", "model_not_found"),
+				Entry("rate_limit", common.FailureTypeRateLimit, 429, "rate_limit_exceeded", "rate_limit_exceeded"),
+				Entry("invalid_api_key", common.FailureTypeInvalidAPIKey, 401, "invalid_request_error", "invalid_api_key"),
+				Entry("context_length", common.FailureTypeContextLength, 400, "invalid_request_error", "context_length_exceeded"),
+				Entry("server_error", common.FailureTypeServerError, 503, "server_error", "server_error"),
+				Entry("invalid_request", common.FailureTypeInvalidRequest, 400, "invalid_request_error", "invalid_request_error"),
+				Entry("model_not_found", common.FailureTypeModelNotFound, 404, "invalid_request_error", "model_not_found"),
 			)
 		})
 
-		Context("configuration validation", func() {
-			It("should fail with invalid failure injection rate > 100", func() {
-				ctx := context.Background()
-				_, err := startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
-					"--failure-injection-rate", "150",
-				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failure injection rate should be between 0 and 100"))
-			})
-
-			It("should fail with invalid failure injection rate < 0", func() {
-				ctx := context.Background()
-				_, err := startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
-					"--failure-injection-rate", "-10",
-				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("failure injection rate should be between 0 and 100"))
-			})
-
-			It("should fail with invalid failure type", func() {
-				ctx := context.Background()
-				_, err := startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
-					"--failure-injection-rate", "50",
-					"--failure-types", "invalid_type",
-				})
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("invalid failure type 'invalid_type'"))
-			})
-		})
 	})
 })

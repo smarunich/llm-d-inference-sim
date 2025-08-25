@@ -199,8 +199,6 @@ func newConfig() *Configuration {
 		TokenBlockSize:     16,
 		ZMQEndpoint:        "tcp://localhost:5557",
 		EventBatchSize:     16,
-		FailureInjectionRate: 0,
-		FailureTypes:       []string{},
 	}
 }
 
@@ -329,7 +327,9 @@ func (c *Configuration) validate() error {
 	}
 	for _, failureType := range c.FailureTypes {
 		if !validFailureTypes[failureType] {
-			return fmt.Errorf("invalid failure type '%s', valid types are: rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found", failureType)
+			return fmt.Errorf("invalid failure type '%s', valid types are: %s, %s, %s, %s, %s, %s", failureType, 
+				FailureTypeRateLimit, FailureTypeInvalidAPIKey, FailureTypeContextLength, 
+				FailureTypeServerError, FailureTypeInvalidRequest, FailureTypeModelNotFound)
 		}
 	}
 	return nil

@@ -533,8 +533,7 @@ func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, errorInfo 
 	}
 	
 	errorResp := openaiserverapi.ErrorResponse{
-		Object: "error",
-		Error:  compErr,
+		Error: compErr,
 	}
 	
 	if isInjected {

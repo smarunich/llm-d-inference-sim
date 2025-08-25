@@ -24,8 +24,8 @@ import (
 
 const (
 	// Error message templates
-	RateLimitMessageTemplate    = "Rate limit reached for %s in organization org-xxx on requests per min (RPM): Limit 3, Used 3, Requested 1."
-	ModelNotFoundMessageTemplate = "The model '%s-nonexistent' does not exist"
+	rateLimitMessageTemplate    = "Rate limit reached for %s in organization org-xxx on requests per min (RPM): Limit 3, Used 3, Requested 1."
+	modelNotFoundMessageTemplate = "The model '%s-nonexistent' does not exist"
 )
 
 type FailureSpec struct {
@@ -41,7 +41,7 @@ var predefinedFailures = map[string]FailureSpec{
 		StatusCode: 429,
 		ErrorType:  "rate_limit_exceeded",
 		ErrorCode:  "rate_limit_exceeded",
-		Message:    "Rate limit reached for model in organization org-xxx on requests per min (RPM): Limit 3, Used 3, Requested 1.",
+		Message:    rateLimitMessageTemplate,
 		Param:      nil,
 	},
 	common.FailureTypeInvalidAPIKey: {
@@ -76,7 +76,7 @@ var predefinedFailures = map[string]FailureSpec{
 		StatusCode: 404,
 		ErrorType:  "invalid_request_error",
 		ErrorCode:  "model_not_found",
-		Message:    "The model 'gpt-nonexistent' does not exist",
+		Message:    modelNotFoundMessageTemplate,
 		Param:      stringPtr("model"),
 	},
 }
@@ -113,9 +113,9 @@ func GetRandomFailure(config *common.Configuration) FailureSpec {
 	// Customize message with current model name
 	failure := predefinedFailures[randomType]
 	if randomType == common.FailureTypeRateLimit && config.Model != "" {
-		failure.Message = fmt.Sprintf(RateLimitMessageTemplate, config.Model)
+		failure.Message = fmt.Sprintf(rateLimitMessageTemplate, config.Model)
 	} else if randomType == common.FailureTypeModelNotFound && config.Model != "" {
-		failure.Message = fmt.Sprintf(ModelNotFoundMessageTemplate, config.Model)
+		failure.Message = fmt.Sprintf(modelNotFoundMessageTemplate, config.Model)
 	}
 	
 	return failure
