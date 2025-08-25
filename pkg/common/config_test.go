@@ -382,7 +382,8 @@ var _ = Describe("Simulator configuration", func() {
 			name: "invalid failure type",
 			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "50",
 				"--failure-types", "invalid_type"},
-    },
+		},
+		{
 			name: "invalid fake metrics: negative running requests",
 			args: []string{"cmd", "--fake-metrics", "{\"running-requests\":-10,\"waiting-requests\":30,\"kv-cache-usage\":0.4}",
 				"--config", "../../manifests/config.yaml"},

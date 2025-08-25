@@ -843,7 +843,7 @@ var _ = Describe("Simulator", func() {
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model,
 					"--failure-injection-rate", "100",
-				})
+				}, nil)
 				Expect(err).ToNot(HaveOccurred())
 			})
 
@@ -902,7 +902,7 @@ var _ = Describe("Simulator", func() {
 					"cmd", "--model", model,
 					"--failure-injection-rate", "100",
 					"--failure-types", common.FailureTypeRateLimit,
-				})
+				}, nil)
 				Expect(err).ToNot(HaveOccurred())
 			})
 
@@ -938,7 +938,7 @@ var _ = Describe("Simulator", func() {
 					"cmd", "--model", model,
 					"--failure-injection-rate", "100",
 					"--failure-types", common.FailureTypeInvalidAPIKey, common.FailureTypeServerError,
-				})
+				}, nil)
 				Expect(err).ToNot(HaveOccurred())
 			})
 
@@ -977,7 +977,7 @@ var _ = Describe("Simulator", func() {
 				client, err = startServerWithArgs(ctx, "failure", []string{
 					"cmd", "--model", model,
 					"--failure-injection-rate", "0",
-				})
+				}, nil)
 				Expect(err).ToNot(HaveOccurred())
 			})
 
@@ -1009,7 +1009,7 @@ var _ = Describe("Simulator", func() {
 						"cmd", "--model", model,
 						"--failure-injection-rate", "100",
 						"--failure-types", failureType,
-					})
+					}, nil)
 					Expect(err).ToNot(HaveOccurred())
 
 					openaiClient := openai.NewClient(
@@ -1042,7 +1042,8 @@ var _ = Describe("Simulator", func() {
 				Entry("model_not_found", common.FailureTypeModelNotFound, 404, "invalid_request_error", "model_not_found"),
 			)
 		})
-    
+	})
+
 	Context("fake metrics", func() {
 		It("Should respond with fake metrics to /metrics", func() {
 			ctx := context.TODO()

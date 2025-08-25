@@ -41,7 +41,7 @@ const (
 	FailureTypeServerError    = "server_error"
 	FailureTypeInvalidRequest = "invalid_request"
 	FailureTypeModelNotFound  = "model_not_found"
-	dummy           = "dummy"
+	dummy                     = "dummy"
 )
 
 type Configuration struct {
@@ -136,12 +136,12 @@ type Configuration struct {
 	// ZMQMaxConnectAttempts defines the maximum number (10) of retries when ZMQ connection fails
 	ZMQMaxConnectAttempts uint `yaml:"zmq-max-connect-attempts" json:"zmq-max-connect-attempts"`
 
-  // EventBatchSize is the maximum number of kv-cache events to be sent together, defaults to 16
+	// EventBatchSize is the maximum number of kv-cache events to be sent together, defaults to 16
 	EventBatchSize int `yaml:"event-batch-size" json:"event-batch-size"`
 
 	// FakeMetrics is a set of metrics to send to Prometheus instead of the real data
 	FakeMetrics *Metrics `yaml:"fake-metrics" json:"fake-metrics"`
-  
+
 	// FailureInjectionRate is the probability (0-100) of injecting failures
 	FailureInjectionRate int `yaml:"failure-injection-rate"`
 	// FailureTypes is a list of specific failure types to inject (empty means all types)
@@ -387,6 +387,8 @@ func (c *Configuration) validate() error {
 			return fmt.Errorf("invalid failure type '%s', valid types are: %s, %s, %s, %s, %s, %s", failureType,
 				FailureTypeRateLimit, FailureTypeInvalidAPIKey, FailureTypeContextLength,
 				FailureTypeServerError, FailureTypeInvalidRequest, FailureTypeModelNotFound)
+		}
+	}
 
 	if c.ZMQMaxConnectAttempts > 10 {
 		return errors.New("zmq retries times cannot be more than 10")
