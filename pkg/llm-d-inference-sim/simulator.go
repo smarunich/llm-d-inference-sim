@@ -20,8 +20,10 @@ package llmdinferencesim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,7 +31,6 @@ import (
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/valyala/fasthttp"
@@ -46,6 +47,11 @@ const (
 	textCompletionObject      = "text_completion"
 	chatCompletionObject      = "chat.completion"
 	chatCompletionChunkObject = "chat.completion.chunk"
+
+	podHeader       = "x-inference-pod"
+	namespaceHeader = "x-inference-namespace"
+	podNameEnv      = "POD_NAME"
+	podNsEnv        = "POD_NAMESPACE"
 )
 
 // VllmSimulator simulates vLLM server supporting OpenAI API
@@ -79,6 +85,10 @@ type VllmSimulator struct {
 	toolsValidator *openaiserverapi.Validator
 	// kv cache functionality
 	kvcacheHelper *kvcache.KVCacheHelper
+	// namespace where simulator is running
+	namespace string
+	// pod name of simulator
+	pod string
 }
 
 // New creates a new VllmSimulator instance with the given logger
@@ -93,6 +103,8 @@ func New(logger logr.Logger) (*VllmSimulator, error) {
 		reqChan:        make(chan *openaiserverapi.CompletionReqCtx, 1000),
 		toolsValidator: toolsValidtor,
 		kvcacheHelper:  nil, // kvcache helper will be created only if required after reading configuration
+		namespace:      os.Getenv(podNsEnv),
+		pod:            os.Getenv(podNameEnv),
 	}, nil
 }
 
@@ -103,7 +115,13 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	s.config = config
+
+	err = s.showConfig(s.logger)
+	if err != nil {
+		return err
+	}
 
 	for _, lora := range config.LoraModules {
 		s.loraAdaptors.Store(lora.Name, "")
@@ -135,8 +153,8 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 		return err
 	}
 
-	// start the http server
-	return s.startServer(listener)
+	// start the http server with context support
+	return s.startServer(ctx, listener)
 }
 
 func (s *VllmSimulator) newListener() (net.Listener, error) {
@@ -149,7 +167,7 @@ func (s *VllmSimulator) newListener() (net.Listener, error) {
 }
 
 // startServer starts http server on port defined in command line
-func (s *VllmSimulator) startServer(listener net.Listener) error {
+func (s *VllmSimulator) startServer(ctx context.Context, listener net.Listener) error {
 	r := fasthttprouter.New()
 
 	// support completion APIs
@@ -172,13 +190,33 @@ func (s *VllmSimulator) startServer(listener net.Listener) error {
 		Logger:       s,
 	}
 
-	defer func() {
-		if err := listener.Close(); err != nil {
-			s.logger.Error(err, "server listener close failed")
-		}
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		s.logger.Info("HTTP server starting")
+		serverErr <- server.Serve(listener)
 	}()
 
-	return server.Serve(listener)
+	// Wait for either context cancellation or server error
+	select {
+	case <-ctx.Done():
+		s.logger.Info("Shutdown signal received, shutting down HTTP server gracefully")
+
+		// Gracefully shutdown the server
+		if err := server.Shutdown(); err != nil {
+			s.logger.Error(err, "Error during server shutdown")
+			return err
+		}
+
+		s.logger.Info("HTTP server stopped")
+		return nil
+
+	case err := <-serverErr:
+		if err != nil {
+			s.logger.Error(err, "HTTP server failed")
+		}
+		return err
+	}
 }
 
 // Print prints to a log, implementation of fasthttp.Logger
@@ -188,7 +226,7 @@ func (s *VllmSimulator) Printf(format string, args ...interface{}) {
 
 // readRequest reads and parses data from the body of the given request according the type defined by isChatCompletion
 func (s *VllmSimulator) readRequest(ctx *fasthttp.RequestCtx, isChatCompletion bool) (openaiserverapi.CompletionRequest, error) {
-	requestID := uuid.NewString()
+	requestID := common.GenerateUUIDString()
 
 	if isChatCompletion {
 		var req openaiserverapi.ChatCompletionRequest
@@ -583,7 +621,7 @@ func (s *VllmSimulator) HandleError(_ *fasthttp.RequestCtx, err error) {
 func (s *VllmSimulator) createCompletionResponse(isChatCompletion bool, respTokens []string, toolCalls []openaiserverapi.ToolCall,
 	finishReason *string, usageData *openaiserverapi.Usage, modelName string, doRemoteDecode bool) openaiserverapi.CompletionResponse {
 	baseResp := openaiserverapi.BaseCompletionResponse{
-		ID:      chatComplIDPrefix + uuid.NewString(),
+		ID:      chatComplIDPrefix + common.GenerateUUIDString(),
 		Created: time.Now().Unix(),
 		Model:   modelName,
 		Usage:   usageData,
@@ -648,9 +686,15 @@ func (s *VllmSimulator) sendResponse(isChatCompletion bool, ctx *fasthttp.Reques
 	totalMillisToWait := s.getTimeToFirstToken(doRemotePrefill) + s.getTotalInterTokenLatency(numOfTokens)
 	time.Sleep(time.Duration(totalMillisToWait) * time.Millisecond)
 
-	// TODO - maybe add pod id to response header for testing
 	ctx.Response.Header.SetContentType("application/json")
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
+	// Add pod and namespace information to response headers for testing/debugging
+	if s.pod != "" {
+		ctx.Response.Header.Add(podHeader, s.pod)
+	}
+	if s.namespace != "" {
+		ctx.Response.Header.Add(namespaceHeader, s.namespace)
+	}
 	ctx.Response.SetBody(data)
 
 	s.responseSentCallback(modelName)
@@ -739,4 +783,37 @@ func (s *VllmSimulator) getDisplayedModelName(reqModel string) string {
 		return reqModel
 	}
 	return s.config.ServedModelNames[0]
+}
+
+func (s *VllmSimulator) showConfig(tgtLgr logr.Logger) error {
+	if tgtLgr == logr.Discard() {
+		return errors.New("target logger is nil, cannot show configuration")
+	}
+	cfgJSON, err := json.Marshal(s.config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
+	}
+
+	// clean LoraModulesString field
+	var m map[string]interface{}
+	err = json.Unmarshal(cfgJSON, &m)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+	}
+	m["lora-modules"] = m["LoraModules"]
+	delete(m, "LoraModules")
+	delete(m, "LoraModulesString")
+
+	// clean fake-metrics field
+	if field, ok := m["fake-metrics"].(map[string]interface{}); ok {
+		delete(field, "LorasString")
+	}
+
+	// show in JSON
+	cfgJSON, err = json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
+	}
+	tgtLgr.Info("Configuration:", "", string(cfgJSON))
+	return nil
 }

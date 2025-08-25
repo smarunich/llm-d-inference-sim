@@ -25,6 +25,16 @@ IMAGE_TAG_BASE ?= $(IMAGE_REGISTRY)/$(PROJECT_NAME)
 SIM_TAG ?= dev
 IMG = $(IMAGE_TAG_BASE):$(SIM_TAG)
 
+ifeq ($(TARGETOS),darwin)
+ifeq ($(TARGETARCH),amd64)
+TOKENIZER_ARCH = x86_64
+else
+TOKENIZER_ARCH = $(TARGETARCH)
+endif
+else
+TOKENIZER_ARCH = $(TARGETARCH)
+endif
+
 CONTAINER_TOOL := $(shell { command -v docker >/dev/null 2>&1 && echo docker; } || { command -v podman >/dev/null 2>&1 && echo podman; } || echo "")
 BUILDER := $(shell command -v buildah >/dev/null 2>&1 && echo buildah || echo $(CONTAINER_TOOL))
 PLATFORMS ?= linux/amd64 # linux/arm64 # linux/s390x,linux/ppc64le
@@ -36,7 +46,7 @@ SRC = $(shell find . -type f -name '*.go')
 help: ## Print help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-LDFLAGS ?= -extldflags '-L$(shell pwd)/lib'
+GO_LDFLAGS := -extldflags '-L$(shell pwd)/lib $(LDFLAGS)'
 CGO_ENABLED=1
 TOKENIZER_LIB = lib/libtokenizers.a
 # Extract TOKENIZER_VERSION from Dockerfile
@@ -48,7 +58,7 @@ $(TOKENIZER_LIB):
 	## Download the HuggingFace tokenizer bindings.
 	@echo "Downloading HuggingFace tokenizer bindings for version $(TOKENIZER_VERSION)..."
 	mkdir -p lib
-	curl -L https://github.com/daulet/tokenizers/releases/download/$(TOKENIZER_VERSION)/libtokenizers.$(TARGETOS)-$(TARGETARCH).tar.gz | tar -xz -C lib
+	curl -L https://github.com/daulet/tokenizers/releases/download/$(TOKENIZER_VERSION)/libtokenizers.$(TARGETOS)-$(TOKENIZER_ARCH).tar.gz | tar -xz -C lib
 	ranlib lib/*.a
 
 ##@ Development
@@ -67,7 +77,11 @@ format: ## Format Go source files
 .PHONY: test
 test: check-ginkgo download-tokenizer download-zmq ## Run tests
 	@printf "\033[33;1m==== Running tests ====\033[0m\n"
-	CGO_ENABLED=1 ginkgo -ldflags="$(LDFLAGS)" -v -r
+ifdef GINKGO_FOCUS
+	CGO_ENABLED=1 ginkgo -ldflags="$(GO_LDFLAGS)" -v -r --focus="$(GINKGO_FOCUS)"
+else
+	CGO_ENABLED=1 ginkgo -ldflags="$(GO_LDFLAGS)" -v -r
+endif
 
 .PHONY: post-deploy-test
 post-deploy-test: ## Run post deployment tests
@@ -84,7 +98,7 @@ lint: check-golangci-lint ## Run lint
 .PHONY: build
 build: check-go download-tokenizer download-zmq 
 	@printf "\033[33;1m==== Building ====\033[0m\n"
-	go build -ldflags="$(LDFLAGS)" -o bin/$(PROJECT_NAME) cmd/$(PROJECT_NAME)/main.go
+	go build -ldflags="$(GO_LDFLAGS)" -o bin/$(PROJECT_NAME) cmd/$(PROJECT_NAME)/main.go
 
 ##@ Container Build/Push
 
@@ -92,8 +106,8 @@ build: check-go download-tokenizer download-zmq
 image-build: check-container-tool ## Build Docker image ## Build Docker image using $(CONTAINER_TOOL)
 	@printf "\033[33;1m==== Building Docker image $(IMG) ====\033[0m\n"
 	$(CONTAINER_TOOL) build \
-		--platform $(TARGETOS)/$(TARGETARCH) \
-		--build-arg TARGETOS=$(TARGETOS)\
+		--platform linux/$(TARGETARCH) \
+ 		--build-arg TARGETOS=linux \
 		--build-arg TARGETARCH=$(TARGETARCH)\
 		-t $(IMG) .
 
@@ -160,7 +174,7 @@ check-ginkgo:
 .PHONY: check-golangci-lint
 check-golangci-lint:
 	@command -v golangci-lint >/dev/null 2>&1 || { \
-	  echo "❌ golangci-lint is not installed. Install from https://golangci-lint.run/usage/install/"; exit 1; }
+	  echo "❌ golangci-lint is not installed. Install from https://golangci-lint.run/docs/welcome/install/"; exit 1; }
 
 .PHONY: check-container-tool
 check-container-tool:

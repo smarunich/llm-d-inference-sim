@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
 	. "github.com/onsi/ginkgo/v2"
@@ -44,10 +45,14 @@ const invalidMaxTokensErrMsg = "Max completion tokens and max tokens should be p
 var userMsgTokens int64
 
 func startServer(ctx context.Context, mode string) (*http.Client, error) {
-	return startServerWithArgs(ctx, mode, nil)
+	return startServerWithArgs(ctx, mode, nil, nil)
 }
 
-func startServerWithArgs(ctx context.Context, mode string, args []string) (*http.Client, error) {
+func startServerWithArgs(ctx context.Context, mode string, args []string, envs map[string]string) (*http.Client, error) {
+	return startServerWithArgsAndMetrics(ctx, mode, args, envs, false)
+}
+
+func startServerWithArgsAndMetrics(ctx context.Context, mode string, args []string, envs map[string]string, setMetrics bool) (*http.Client, error) {
 	oldArgs := os.Args
 	defer func() {
 		os.Args = oldArgs
@@ -58,6 +63,21 @@ func startServerWithArgs(ctx context.Context, mode string, args []string) (*http
 	} else {
 		os.Args = []string{"cmd", "--model", model, "--mode", mode}
 	}
+
+	if envs != nil {
+		for k, v := range envs {
+			err := os.Setenv(k, v)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		defer func() {
+			for k := range envs {
+				err := os.Unsetenv(k)
+				Expect(err).NotTo(HaveOccurred())
+			}
+		}()
+	}
+
 	logger := klog.Background()
 
 	s, err := New(logger)
@@ -76,6 +96,13 @@ func startServerWithArgs(ctx context.Context, mode string, args []string) (*http
 
 	common.InitRandom(s.config.Seed)
 
+	if setMetrics {
+		err = s.createAndRegisterPrometheus()
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// calculate number of tokens for user message,
 	// must be activated after parseCommandParamsAndLoadConfig since it initializes the random engine
 	userMsgTokens = int64(len(common.Tokenize(userMessage)))
@@ -89,7 +116,7 @@ func startServerWithArgs(ctx context.Context, mode string, args []string) (*http
 
 	// start the http server
 	go func() {
-		if err := s.startServer(listener); err != nil {
+		if err := s.startServer(ctx, listener); err != nil {
 			logger.Error(err, "error starting server")
 		}
 	}()
@@ -402,12 +429,217 @@ var _ = Describe("Simulator", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 	})
 
+	It("Should not include namespace and pod headers in chat completion response when env is not set", func() {
+		ctx := context.TODO()
+
+		client, err := startServer(ctx, common.ModeRandom)
+		Expect(err).NotTo(HaveOccurred())
+
+		openaiclient := openai.NewClient(
+			option.WithBaseURL(baseURL),
+			option.WithHTTPClient(client))
+
+		params := openai.ChatCompletionNewParams{
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(userMessage),
+			},
+			Model: model,
+		}
+
+		var httpResp *http.Response
+		resp, err := openaiclient.Chat.Completions.New(ctx, params, option.WithResponseInto(&httpResp))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp).NotTo(BeNil())
+
+		// Check for namespace and pod headers
+		namespaceHeader := httpResp.Header.Get(namespaceHeader)
+		podHeader := httpResp.Header.Get(podHeader)
+
+		Expect(namespaceHeader).To(BeEmpty(), "Expected namespace header not to be present")
+		Expect(podHeader).To(BeEmpty(), "Expected pod header not to be present")
+	})
+
+	It("Should include namespace and pod headers in chat completion response", func() {
+		ctx := context.TODO()
+
+		testNamespace := "test-namespace"
+		testPod := "test-pod"
+		envs := map[string]string{
+			podNameEnv: testPod,
+			podNsEnv:   testNamespace,
+		}
+		client, err := startServerWithArgs(ctx, common.ModeRandom, nil, envs)
+		Expect(err).NotTo(HaveOccurred())
+
+		openaiclient := openai.NewClient(
+			option.WithBaseURL(baseURL),
+			option.WithHTTPClient(client))
+
+		params := openai.ChatCompletionNewParams{
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(userMessage),
+			},
+			Model: model,
+		}
+
+		var httpResp *http.Response
+		resp, err := openaiclient.Chat.Completions.New(ctx, params, option.WithResponseInto(&httpResp))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp).NotTo(BeNil())
+
+		// Check for namespace and pod headers
+		namespaceHeader := httpResp.Header.Get(namespaceHeader)
+		podHeader := httpResp.Header.Get(podHeader)
+
+		Expect(namespaceHeader).To(Equal(testNamespace), "Expected namespace header to be present")
+		Expect(podHeader).To(Equal(testPod), "Expected pod header to be present")
+	})
+
+	It("Should include namespace and pod headers in chat completion streaming response", func() {
+		ctx := context.TODO()
+
+		testNamespace := "stream-test-namespace"
+		testPod := "stream-test-pod"
+		envs := map[string]string{
+			podNameEnv: testPod,
+			podNsEnv:   testNamespace,
+		}
+		client, err := startServerWithArgs(ctx, common.ModeRandom, nil, envs)
+		Expect(err).NotTo(HaveOccurred())
+
+		openaiclient := openai.NewClient(
+			option.WithBaseURL(baseURL),
+			option.WithHTTPClient(client))
+
+		params := openai.ChatCompletionNewParams{
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(userMessage),
+			},
+			Model:         model,
+			StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
+		}
+
+		var httpResp *http.Response
+		resp, err := openaiclient.Chat.Completions.New(ctx, params, option.WithResponseInto(&httpResp))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp).NotTo(BeNil())
+
+		// Check for namespace and pod headers
+		namespaceHeader := httpResp.Header.Get(namespaceHeader)
+		podHeader := httpResp.Header.Get(podHeader)
+
+		Expect(namespaceHeader).To(Equal(testNamespace), "Expected namespace header to be present")
+		Expect(podHeader).To(Equal(testPod), "Expected pod header to be present")
+	})
+
+	It("Should not include namespace and pod headers in chat completion streaming response when env is not set", func() {
+		ctx := context.TODO()
+
+		client, err := startServer(ctx, common.ModeRandom)
+		Expect(err).NotTo(HaveOccurred())
+
+		openaiclient := openai.NewClient(
+			option.WithBaseURL(baseURL),
+			option.WithHTTPClient(client))
+
+		params := openai.ChatCompletionNewParams{
+			Messages: []openai.ChatCompletionMessageParamUnion{
+				openai.UserMessage(userMessage),
+			},
+			Model:         model,
+			StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
+		}
+
+		var httpResp *http.Response
+		resp, err := openaiclient.Chat.Completions.New(ctx, params, option.WithResponseInto(&httpResp))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp).NotTo(BeNil())
+
+		// Check for namespace and pod headers
+		namespaceHeader := httpResp.Header.Get(namespaceHeader)
+		podHeader := httpResp.Header.Get(podHeader)
+
+		Expect(namespaceHeader).To(BeEmpty(), "Expected namespace header not to be present")
+		Expect(podHeader).To(BeEmpty(), "Expected pod header not to be present")
+	})
+
+	It("Should include namespace and pod headers in completion response", func() {
+		ctx := context.TODO()
+
+		testNamespace := "test-namespace"
+		testPod := "test-pod"
+		envs := map[string]string{
+			podNameEnv: testPod,
+			podNsEnv:   testNamespace,
+		}
+		client, err := startServerWithArgs(ctx, common.ModeRandom, nil, envs)
+		Expect(err).NotTo(HaveOccurred())
+
+		openaiclient := openai.NewClient(
+			option.WithBaseURL(baseURL),
+			option.WithHTTPClient(client))
+
+		params := openai.CompletionNewParams{
+			Prompt: openai.CompletionNewParamsPromptUnion{
+				OfString: openai.String(userMessage),
+			},
+			Model: openai.CompletionNewParamsModel(model),
+		}
+		var httpResp *http.Response
+		resp, err := openaiclient.Completions.New(ctx, params, option.WithResponseInto(&httpResp))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp).NotTo(BeNil())
+
+		// Check for namespace and pod headers
+		namespaceHeader := httpResp.Header.Get(namespaceHeader)
+		podHeader := httpResp.Header.Get(podHeader)
+
+		Expect(namespaceHeader).To(Equal(testNamespace), "Expected namespace header to be present")
+		Expect(podHeader).To(Equal(testPod), "Expected pod header to be present")
+	})
+
+	It("Should include namespace and pod headers in completion streaming response", func() {
+		ctx := context.TODO()
+
+		testNamespace := "stream-test-namespace"
+		testPod := "stream-test-pod"
+		envs := map[string]string{
+			podNameEnv: testPod,
+			podNsEnv:   testNamespace,
+		}
+		client, err := startServerWithArgs(ctx, common.ModeRandom, nil, envs)
+		Expect(err).NotTo(HaveOccurred())
+
+		openaiclient := openai.NewClient(
+			option.WithBaseURL(baseURL),
+			option.WithHTTPClient(client))
+
+		params := openai.CompletionNewParams{
+			Prompt: openai.CompletionNewParamsPromptUnion{
+				OfString: openai.String(userMessage),
+			},
+			Model:         openai.CompletionNewParamsModel(model),
+			StreamOptions: openai.ChatCompletionStreamOptionsParam{IncludeUsage: param.NewOpt(true)},
+		}
+		var httpResp *http.Response
+		resp, err := openaiclient.Completions.New(ctx, params, option.WithResponseInto(&httpResp))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp).NotTo(BeNil())
+
+		// Check for namespace and pod headers
+		namespaceHeader := httpResp.Header.Get(namespaceHeader)
+		podHeader := httpResp.Header.Get(podHeader)
+
+		Expect(namespaceHeader).To(Equal(testNamespace), "Expected namespace header to be present")
+		Expect(podHeader).To(Equal(testPod), "Expected pod header to be present")
+	})
+
 	Context("max-model-len context window validation", func() {
 		It("Should reject requests exceeding context window", func() {
 			ctx := context.TODO()
 			// Start server with max-model-len=10
 			args := []string{"cmd", "--model", model, "--mode", common.ModeRandom, "--max-model-len", "10"}
-			client, err := startServerWithArgs(ctx, common.ModeRandom, args)
+			client, err := startServerWithArgs(ctx, common.ModeRandom, args, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test with raw HTTP to verify the error response format
@@ -457,7 +689,7 @@ var _ = Describe("Simulator", func() {
 			ctx := context.TODO()
 			// Start server with max-model-len=50
 			args := []string{"cmd", "--model", model, "--mode", common.ModeEcho, "--max-model-len", "50"}
-			client, err := startServerWithArgs(ctx, common.ModeEcho, args)
+			client, err := startServerWithArgs(ctx, common.ModeEcho, args, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			openaiclient := openai.NewClient(
@@ -483,7 +715,7 @@ var _ = Describe("Simulator", func() {
 			ctx := context.TODO()
 			// Start server with max-model-len=10
 			args := []string{"cmd", "--model", model, "--mode", common.ModeRandom, "--max-model-len", "10"}
-			client, err := startServerWithArgs(ctx, common.ModeRandom, args)
+			client, err := startServerWithArgs(ctx, common.ModeRandom, args, nil)
 			Expect(err).NotTo(HaveOccurred())
 
 			// Test with raw HTTP for text completion
@@ -523,6 +755,8 @@ var _ = Describe("Simulator", func() {
 				KVCacheTransferLatency:       2048,
 				KVCacheTransferLatencyStdDev: 2048,
 			}
+
+			common.InitRandom(time.Now().UnixNano())
 		})
 
 		DescribeTable("should calculate inter token latency correctly",
@@ -530,8 +764,8 @@ var _ = Describe("Simulator", func() {
 				simulator.config.InterTokenLatency = interTokenLatency
 				simulator.config.InterTokenLatencyStdDev = stddev
 				interToken := simulator.getInterTokenLatency()
-				Expect(interToken).To(BeNumerically(">=", float32(interTokenLatency)*0.3))
-				Expect(interToken).To(BeNumerically("<=", float32(interTokenLatency)*1.7))
+				Expect(interToken).To(BeNumerically(">=", int(float32(interTokenLatency)*0.3)))
+				Expect(interToken).To(BeNumerically("<=", int(float32(interTokenLatency)*1.7)))
 			},
 			func(interTokenLatency int, stddev int) string {
 				return fmt.Sprintf("interTokenLatency: %d stddev: %d", interTokenLatency, stddev)
@@ -547,8 +781,8 @@ var _ = Describe("Simulator", func() {
 				simulator.config.InterTokenLatency = interTokenLatency
 				simulator.config.InterTokenLatencyStdDev = stddev
 				latency := simulator.getTotalInterTokenLatency(numberOfTokens)
-				Expect(latency).To(BeNumerically(">=", float32(interTokenLatency)*0.3*float32(numberOfTokens)))
-				Expect(latency).To(BeNumerically("<=", float32(interTokenLatency)*1.7*float32(numberOfTokens)))
+				Expect(latency).To(BeNumerically(">=", int(float32(interTokenLatency)*0.3*float32(numberOfTokens))))
+				Expect(latency).To(BeNumerically("<=", int(float32(interTokenLatency)*1.7*float32(numberOfTokens))))
 			},
 			func(interTokenLatency int, stddev int, numberOfTokens int) string {
 				return fmt.Sprintf("interTokenLatency: %d stddev: %d, numberOfTokens: %d", interTokenLatency,
@@ -569,11 +803,11 @@ var _ = Describe("Simulator", func() {
 				simulator.config.KVCacheTransferLatencyStdDev = kvCacheLatencyStdDev
 				timeToFirst := simulator.getTimeToFirstToken(doREmotePrefill)
 				if doREmotePrefill {
-					Expect(timeToFirst).To(BeNumerically(">=", float32(kvCacheLatency)*0.3))
-					Expect(timeToFirst).To(BeNumerically("<=", float32(kvCacheLatency)*1.7))
+					Expect(timeToFirst).To(BeNumerically(">=", int(float32(kvCacheLatency)*0.3)))
+					Expect(timeToFirst).To(BeNumerically("<=", int(float32(kvCacheLatency)*1.7)))
 				} else {
-					Expect(timeToFirst).To(BeNumerically(">=", float32(timeToFirstToken)*0.3))
-					Expect(timeToFirst).To(BeNumerically("<=", float32(timeToFirstToken)*1.7))
+					Expect(timeToFirst).To(BeNumerically(">=", int(float32(timeToFirstToken)*0.3)))
+					Expect(timeToFirst).To(BeNumerically("<=", int(float32(timeToFirstToken)*1.7)))
 				}
 			},
 			func(timeToFirstToken int, timeToFirstTokenStdDev int,
@@ -808,6 +1042,31 @@ var _ = Describe("Simulator", func() {
 				Entry("model_not_found", common.FailureTypeModelNotFound, 404, "invalid_request_error", "model_not_found"),
 			)
 		})
+    
+	Context("fake metrics", func() {
+		It("Should respond with fake metrics to /metrics", func() {
+			ctx := context.TODO()
+			args := []string{"cmd", "--model", model, "--mode", common.ModeRandom,
+				"--fake-metrics",
+				"{\"running-requests\":10,\"waiting-requests\":30,\"kv-cache-usage\":0.4,\"loras\":[{\"running\":\"lora4,lora2\",\"waiting\":\"lora3\",\"timestamp\":1257894567},{\"running\":\"lora4,lora3\",\"waiting\":\"\",\"timestamp\":1257894569}]}",
+			}
 
+			client, err := startServerWithArgsAndMetrics(ctx, common.ModeRandom, args, nil, true)
+			Expect(err).NotTo(HaveOccurred())
+
+			resp, err := client.Get("http://localhost/metrics")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(resp.StatusCode).To(Equal(http.StatusOK))
+
+			data, err := io.ReadAll(resp.Body)
+			Expect(err).NotTo(HaveOccurred())
+			metrics := string(data)
+			Expect(metrics).To(ContainSubstring("vllm:num_requests_running{model_name=\"my_model\"} 10"))
+			Expect(metrics).To(ContainSubstring("vllm:num_requests_waiting{model_name=\"my_model\"} 30"))
+			Expect(metrics).To(ContainSubstring("vllm:gpu_cache_usage_perc{model_name=\"my_model\"} 0.4"))
+			Expect(metrics).To(ContainSubstring("vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"lora4,lora2\",waiting_lora_adapters=\"lora3\"} 1.257894567e+09"))
+			Expect(metrics).To(ContainSubstring("vllm:lora_requests_info{max_lora=\"1\",running_lora_adapters=\"lora4,lora3\",waiting_lora_adapters=\"\"} 1.257894569e+09"))
+
+		})
 	})
 })

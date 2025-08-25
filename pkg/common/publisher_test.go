@@ -29,9 +29,11 @@ import (
 )
 
 const (
-	topic    = "test-topic"
-	endpoint = "tcp://localhost:5557"
-	data     = "Hello"
+	topic       = "test-topic"
+	subEndpoint = "tcp://*:5557"
+	pubEndpoint = "tcp://localhost:5557"
+	data        = "Hello"
+	retries     = 0
 )
 
 var _ = Describe("Publisher", func() {
@@ -40,7 +42,7 @@ var _ = Describe("Publisher", func() {
 		Expect(err).NotTo(HaveOccurred())
 		sub, err := zctx.NewSocket(zmq.SUB)
 		Expect(err).NotTo(HaveOccurred())
-		err = sub.Bind(endpoint)
+		err = sub.Bind(subEndpoint)
 		Expect(err).NotTo(HaveOccurred())
 		err = sub.SetSubscribe(topic)
 		Expect(err).NotTo(HaveOccurred())
@@ -49,7 +51,7 @@ var _ = Describe("Publisher", func() {
 
 		time.Sleep(100 * time.Millisecond)
 
-		pub, err := NewPublisher(endpoint)
+		pub, err := NewPublisher(pubEndpoint, retries)
 		Expect(err).NotTo(HaveOccurred())
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -76,5 +78,41 @@ var _ = Describe("Publisher", func() {
 		err = msgpack.Unmarshal(parts[2], &payload)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(payload).To(Equal(data))
+	})
+	It("should fail when connection attempts exceed maximum retries", func() {
+		// Use invalid address format, which will cause connection to fail
+		invalidEndpoint := "invalid-address-format"
+
+		pub, err := NewPublisher(invalidEndpoint, 2)
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("failed to connect"))
+		Expect(err.Error()).To(ContainSubstring("after 3 retries")) // 2 retries = 3 total attempts
+
+		if pub != nil {
+			//nolint
+			pub.Close()
+		}
+	})
+	It("should retry connection successfully", func() {
+		// Step 1: Try to connect to a temporarily non-existent service
+		// This will trigger the retry mechanism
+		go func() {
+			// Delay starting the server to simulate service recovery
+			time.Sleep(2 * time.Second)
+
+			// Start subscriber as server
+			sub, err := zmq.NewSocket(zmq.SUB)
+			Expect(err).NotTo(HaveOccurred())
+			//nolint
+			defer sub.Close()
+			err = sub.Bind(subEndpoint)
+			Expect(err).NotTo(HaveOccurred())
+		}()
+
+		// Step 2: Publisher will retry connection and eventually succeed
+		pub, err := NewPublisher(pubEndpoint, 5) // 5 retries
+		Expect(err).NotTo(HaveOccurred())        // Should eventually succeed
+		//nolint
+		defer pub.Close()
 	})
 })

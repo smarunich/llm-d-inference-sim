@@ -51,7 +51,6 @@ func createDefaultConfig(model string) *Configuration {
 	c.KVCacheTransferLatency = 100
 	c.Seed = 100100100
 	c.LoraModules = []LoraModule{}
-
 	return c
 }
 
@@ -104,12 +103,14 @@ var _ = Describe("Simulator configuration", func() {
 		"{\"name\":\"lora4\",\"path\":\"/path/to/lora4\"}",
 	}
 	c.EventBatchSize = 5
+	c.ZMQMaxConnectAttempts = 1
 	test = testCase{
 		name: "config file with command line args",
 		args: []string{"cmd", "--model", model, "--config", "../../manifests/config.yaml", "--port", "8002",
 			"--served-model-name", "alias1", "alias2", "--seed", "100",
 			"--lora-modules", "{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}", "{\"name\":\"lora4\",\"path\":\"/path/to/lora4\"}",
 			"--event-batch-size", "5",
+			"--zmq-max-connect-attempts", "1",
 		},
 		expectedConfig: c,
 	}
@@ -122,6 +123,7 @@ var _ = Describe("Simulator configuration", func() {
 	c.LoraModulesString = []string{
 		"{\"name\":\"lora3\",\"path\":\"/path/to/lora3\"}",
 	}
+	c.ZMQMaxConnectAttempts = 0
 	test = testCase{
 		name: "config file with command line args with different format",
 		args: []string{"cmd", "--model", model, "--config", "../../manifests/config.yaml", "--port", "8002",
@@ -173,7 +175,7 @@ var _ = Describe("Simulator configuration", func() {
 	}
 	tests = append(tests, test)
 
-	// Config from config.yaml file plus command line args with time to copy cache
+	// Config from basic-config.yaml file plus command line args with time to copy cache
 	c = createDefaultConfig(qwenModelName)
 	c.Port = 8001
 	// basic config file does not contain properties related to lora
@@ -181,8 +183,78 @@ var _ = Describe("Simulator configuration", func() {
 	c.MaxCPULoras = 1
 	c.KVCacheTransferLatency = 50
 	test = testCase{
-		name:           "config file with command line args with time to transfer kv-cache",
+		name:           "basic config file with command line args with time to transfer kv-cache",
 		args:           []string{"cmd", "--config", "../../manifests/basic-config.yaml", "--kv-cache-transfer-latency", "50"},
+		expectedConfig: c,
+	}
+	tests = append(tests, test)
+
+	// Config from config_with_fake.yaml file
+	c = createDefaultConfig(qwenModelName)
+	c.FakeMetrics = &Metrics{
+		RunningRequests:        16,
+		WaitingRequests:        3,
+		KVCacheUsagePercentage: float32(0.3),
+		LoraMetrics: []LorasMetrics{
+			{RunningLoras: "lora1,lora2", WaitingLoras: "lora3", Timestamp: 1257894567},
+			{RunningLoras: "lora1,lora3", WaitingLoras: "", Timestamp: 1257894569},
+		},
+		LorasString: []string{
+			"{\"running\":\"lora1,lora2\",\"waiting\":\"lora3\",\"timestamp\":1257894567}",
+			"{\"running\":\"lora1,lora3\",\"waiting\":\"\",\"timestamp\":1257894569}",
+		},
+	}
+	test = testCase{
+		name:           "config with fake metrics file",
+		args:           []string{"cmd", "--config", "../../manifests/config_with_fake.yaml"},
+		expectedConfig: c,
+	}
+	tests = append(tests, test)
+
+	// Fake metrics from command line
+	c = newConfig()
+	c.Model = model
+	c.ServedModelNames = []string{c.Model}
+	c.MaxCPULoras = 1
+	c.Seed = 100
+	c.FakeMetrics = &Metrics{
+		RunningRequests:        10,
+		WaitingRequests:        30,
+		KVCacheUsagePercentage: float32(0.4),
+		LoraMetrics: []LorasMetrics{
+			{RunningLoras: "lora4,lora2", WaitingLoras: "lora3", Timestamp: 1257894567},
+			{RunningLoras: "lora4,lora3", WaitingLoras: "", Timestamp: 1257894569},
+		},
+		LorasString: nil,
+	}
+	test = testCase{
+		name: "metrics from command line",
+		args: []string{"cmd", "--model", model, "--seed", "100",
+			"--fake-metrics",
+			"{\"running-requests\":10,\"waiting-requests\":30,\"kv-cache-usage\":0.4,\"loras\":[{\"running\":\"lora4,lora2\",\"waiting\":\"lora3\",\"timestamp\":1257894567},{\"running\":\"lora4,lora3\",\"waiting\":\"\",\"timestamp\":1257894569}]}",
+		},
+		expectedConfig: c,
+	}
+	tests = append(tests, test)
+
+	// Fake metrics from both the config file and command line
+	c = createDefaultConfig(qwenModelName)
+	c.FakeMetrics = &Metrics{
+		RunningRequests:        10,
+		WaitingRequests:        30,
+		KVCacheUsagePercentage: float32(0.4),
+		LoraMetrics: []LorasMetrics{
+			{RunningLoras: "lora4,lora2", WaitingLoras: "lora3", Timestamp: 1257894567},
+			{RunningLoras: "lora4,lora3", WaitingLoras: "", Timestamp: 1257894569},
+		},
+		LorasString: nil,
+	}
+	test = testCase{
+		name: "metrics from config file and command line",
+		args: []string{"cmd", "--config", "../../manifests/config_with_fake.yaml",
+			"--fake-metrics",
+			"{\"running-requests\":10,\"waiting-requests\":30,\"kv-cache-usage\":0.4,\"loras\":[{\"running\":\"lora4,lora2\",\"waiting\":\"lora3\",\"timestamp\":1257894567},{\"running\":\"lora4,lora3\",\"waiting\":\"\",\"timestamp\":1257894569}]}",
+		},
 		expectedConfig: c,
 	}
 	tests = append(tests, test)
@@ -310,6 +382,23 @@ var _ = Describe("Simulator configuration", func() {
 			name: "invalid failure type",
 			args: []string{"cmd", "--model", "test-model", "--failure-injection-rate", "50",
 				"--failure-types", "invalid_type"},
+    },
+			name: "invalid fake metrics: negative running requests",
+			args: []string{"cmd", "--fake-metrics", "{\"running-requests\":-10,\"waiting-requests\":30,\"kv-cache-usage\":0.4}",
+				"--config", "../../manifests/config.yaml"},
+		},
+		{
+			name: "invalid fake metrics: kv cache usage",
+			args: []string{"cmd", "--fake-metrics", "{\"running-requests\":10,\"waiting-requests\":30,\"kv-cache-usage\":40}",
+				"--config", "../../manifests/config.yaml"},
+		},
+		{
+			name: "invalid (negative) zmq-max-connect-attempts for argument",
+			args: []string{"cmd", "zmq-max-connect-attempts", "-1", "--config", "../../manifests/config.yaml"},
+		},
+		{
+			name: "invalid (negative) zmq-max-connect-attempts for config file",
+			args: []string{"cmd", "--config", "../../manifests/invalid-config.yaml"},
 		},
 	}
 
