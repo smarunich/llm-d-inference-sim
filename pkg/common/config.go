@@ -34,14 +34,15 @@ const (
 	vLLMDefaultPort = 8000
 	ModeRandom      = "random"
 	ModeEcho        = "echo"
-	
+	dummyFlagValue  = "dummy"
+
 	// Failure type constants
-	FailureTypeRateLimit       = "rate_limit"
-	FailureTypeInvalidAPIKey   = "invalid_api_key"
-	FailureTypeContextLength   = "context_length"
-	FailureTypeServerError     = "server_error"
-	FailureTypeInvalidRequest  = "invalid_request"
-	FailureTypeModelNotFound   = "model_not_found"
+	FailureTypeRateLimit      = "rate_limit"
+	FailureTypeInvalidAPIKey  = "invalid_api_key"
+	FailureTypeContextLength  = "context_length"
+	FailureTypeServerError    = "server_error"
+	FailureTypeInvalidRequest = "invalid_request"
+	FailureTypeModelNotFound  = "model_not_found"
 )
 
 type Configuration struct {
@@ -195,10 +196,10 @@ func newConfig() *Configuration {
 		MinToolCallArrayParamLength:         1,
 		ToolCallNotRequiredParamProbability: 50,
 		ObjectToolCallNotRequiredParamProbability: 50,
-		KVCacheSize:        1024,
-		TokenBlockSize:     16,
-		ZMQEndpoint:        "tcp://localhost:5557",
-		EventBatchSize:     16,
+		KVCacheSize:    1024,
+		TokenBlockSize: 16,
+		ZMQEndpoint:    "tcp://localhost:5557",
+		EventBatchSize: 16,
 	}
 }
 
@@ -312,8 +313,8 @@ func (c *Configuration) validate() error {
 	if c.EventBatchSize < 1 {
 		return errors.New("event batch size cannot less than 1")
 	}
- 
-  if c.FailureInjectionRate < 0 || c.FailureInjectionRate > 100 {
+
+	if c.FailureInjectionRate < 0 || c.FailureInjectionRate > 100 {
 		return errors.New("failure injection rate should be between 0 and 100")
 	}
 
@@ -327,8 +328,8 @@ func (c *Configuration) validate() error {
 	}
 	for _, failureType := range c.FailureTypes {
 		if !validFailureTypes[failureType] {
-			return fmt.Errorf("invalid failure type '%s', valid types are: %s, %s, %s, %s, %s, %s", failureType, 
-				FailureTypeRateLimit, FailureTypeInvalidAPIKey, FailureTypeContextLength, 
+			return fmt.Errorf("invalid failure type '%s', valid types are: %s, %s, %s, %s, %s, %s", failureType,
+				FailureTypeRateLimit, FailureTypeInvalidAPIKey, FailureTypeContextLength,
 				FailureTypeServerError, FailureTypeInvalidRequest, FailureTypeModelNotFound)
 		}
 	}
@@ -384,14 +385,13 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.HashSeed, "hash-seed", config.HashSeed, "Seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)")
 	f.StringVar(&config.ZMQEndpoint, "zmq-endpoint", config.ZMQEndpoint, "ZMQ address to publish events")
 	f.IntVar(&config.EventBatchSize, "event-batch-size", config.EventBatchSize, "Maximum number of kv-cache events to be sent together")
-  
-  f.IntVar(&config.FailureInjectionRate, "failure-injection-rate", config.FailureInjectionRate, "Probability (0-100) of injecting failures")
+
+	f.IntVar(&config.FailureInjectionRate, "failure-injection-rate", config.FailureInjectionRate, "Probability (0-100) of injecting failures")
 
 	failureTypes := getParamValueFromArgs("failure-types")
 	var dummyFailureTypes multiString
 	f.Var(&dummyFailureTypes, "failure-types", "List of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found)")
-	f.Lookup("failure-types").NoOptDefVal = "dummy"
-
+	f.Lookup("failure-types").NoOptDefVal = dummyFlagValue
 
 	// These values were manually parsed above in getParamValueFromArgs, we leave this in order to get these flags in --help
 	var dummyString string
@@ -400,8 +400,8 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.Var(&dummyMultiString, "served-model-name", "Model names exposed by the API (a list of space-separated strings)")
 	f.Var(&dummyMultiString, "lora-modules", "List of LoRA adapters (a list of space-separated JSON strings)")
 	// In order to allow empty arguments, we set a dummy NoOptDefVal for these flags
-	f.Lookup("served-model-name").NoOptDefVal = "dummy"
-	f.Lookup("lora-modules").NoOptDefVal = "dummy"
+	f.Lookup("served-model-name").NoOptDefVal = dummyFlagValue
+	f.Lookup("lora-modules").NoOptDefVal = dummyFlagValue
 
 	flagSet := flag.NewFlagSet("simFlagSet", flag.ExitOnError)
 	klog.InitFlags(flagSet)

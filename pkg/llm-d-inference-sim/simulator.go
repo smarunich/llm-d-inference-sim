@@ -507,7 +507,7 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, errorInfo interface{}, isInjected bool) {
 	var compErr openaiserverapi.CompletionError
 	var statusCode int
-	
+
 	switch v := errorInfo.(type) {
 	case string:
 		// Legacy call with string message (backward compatibility)
@@ -531,11 +531,11 @@ func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, errorInfo 
 		// For calls with msg, errType, and code - need to be updated in calling code
 		panic("sendCompletionError called with unexpected type")
 	}
-	
+
 	errorResp := openaiserverapi.ErrorResponse{
 		Error: compErr,
 	}
-	
+
 	if isInjected {
 		s.logger.Info("Injecting failure", "type", compErr.Type, "message", compErr.Message)
 	} else {

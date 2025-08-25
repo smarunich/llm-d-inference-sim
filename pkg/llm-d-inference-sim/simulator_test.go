@@ -607,7 +607,7 @@ var _ = Describe("Simulator", func() {
 				ctx = context.Background()
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
+					"cmd", "--model", model,
 					"--failure-injection-rate", "100",
 				})
 				Expect(err).ToNot(HaveOccurred())
@@ -627,7 +627,7 @@ var _ = Describe("Simulator", func() {
 				})
 
 				Expect(err).To(HaveOccurred())
-				
+
 				var openaiError *openai.Error
 				ok := errors.As(err, &openaiError)
 				Expect(ok).To(BeTrue())
@@ -650,7 +650,7 @@ var _ = Describe("Simulator", func() {
 				})
 
 				Expect(err).To(HaveOccurred())
-				
+
 				var openaiError *openai.Error
 				ok := errors.As(err, &openaiError)
 				Expect(ok).To(BeTrue())
@@ -665,7 +665,7 @@ var _ = Describe("Simulator", func() {
 				ctx = context.Background()
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
+					"cmd", "--model", model,
 					"--failure-injection-rate", "100",
 					"--failure-types", common.FailureTypeRateLimit,
 				})
@@ -686,7 +686,7 @@ var _ = Describe("Simulator", func() {
 				})
 
 				Expect(err).To(HaveOccurred())
-				
+
 				var openaiError *openai.Error
 				ok := errors.As(err, &openaiError)
 				Expect(ok).To(BeTrue())
@@ -701,7 +701,7 @@ var _ = Describe("Simulator", func() {
 				ctx = context.Background()
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
+					"cmd", "--model", model,
 					"--failure-injection-rate", "100",
 					"--failure-types", common.FailureTypeInvalidAPIKey, common.FailureTypeServerError,
 				})
@@ -724,11 +724,11 @@ var _ = Describe("Simulator", func() {
 					})
 
 					Expect(err).To(HaveOccurred())
-					
+
 					var openaiError *openai.Error
 					ok := errors.As(err, &openaiError)
 					Expect(ok).To(BeTrue())
-					
+
 					// Should only be one of the specified types
 					Expect(openaiError.StatusCode == 401 || openaiError.StatusCode == 503).To(BeTrue())
 					Expect(openaiError.Type == "invalid_request_error" || openaiError.Type == "server_error").To(BeTrue())
@@ -741,7 +741,7 @@ var _ = Describe("Simulator", func() {
 				ctx = context.Background()
 				var err error
 				client, err = startServerWithArgs(ctx, "failure", []string{
-					"cmd", "--model", model, 
+					"cmd", "--model", model,
 					"--failure-injection-rate", "0",
 				})
 				Expect(err).ToNot(HaveOccurred())
@@ -772,7 +772,7 @@ var _ = Describe("Simulator", func() {
 				func(failureType string, expectedStatusCode int, expectedErrorType string, expectedErrorCode string) {
 					ctx := context.Background()
 					client, err := startServerWithArgs(ctx, "failure", []string{
-						"cmd", "--model", model, 
+						"cmd", "--model", model,
 						"--failure-injection-rate", "100",
 						"--failure-types", failureType,
 					})
@@ -791,13 +791,13 @@ var _ = Describe("Simulator", func() {
 					})
 
 					Expect(err).To(HaveOccurred())
-					
+
 					var openaiError *openai.Error
 					ok := errors.As(err, &openaiError)
 					Expect(ok).To(BeTrue())
 					Expect(openaiError.StatusCode).To(Equal(expectedStatusCode))
 					Expect(openaiError.Type).To(Equal(expectedErrorType))
-					// Note: OpenAI Go client doesn't directly expose the error code field, 
+					// Note: OpenAI Go client doesn't directly expose the error code field,
 					// but we can verify via status code and type
 				},
 				Entry("rate_limit", common.FailureTypeRateLimit, 429, "rate_limit_exceeded", "rate_limit_exceeded"),

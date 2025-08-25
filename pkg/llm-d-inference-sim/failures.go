@@ -24,7 +24,7 @@ import (
 
 const (
 	// Error message templates
-	rateLimitMessageTemplate    = "Rate limit reached for %s in organization org-xxx on requests per min (RPM): Limit 3, Used 3, Requested 1."
+	rateLimitMessageTemplate     = "Rate limit reached for %s in organization org-xxx on requests per min (RPM): Limit 3, Used 3, Requested 1."
 	modelNotFoundMessageTemplate = "The model '%s-nonexistent' does not exist"
 )
 
@@ -86,7 +86,7 @@ func ShouldInjectFailure(config *common.Configuration) bool {
 	if config.FailureInjectionRate == 0 {
 		return false
 	}
-	
+
 	return common.RandomInt(1, 100) <= config.FailureInjectionRate
 }
 
@@ -101,15 +101,15 @@ func GetRandomFailure(config *common.Configuration) FailureSpec {
 	} else {
 		availableFailures = config.FailureTypes
 	}
-	
+
 	if len(availableFailures) == 0 {
 		// Fallback to server_error if no valid types
 		return predefinedFailures[common.FailureTypeServerError]
 	}
-	
+
 	randomIndex := common.RandomInt(0, len(availableFailures)-1)
 	randomType := availableFailures[randomIndex]
-	
+
 	// Customize message with current model name
 	failure := predefinedFailures[randomType]
 	if randomType == common.FailureTypeRateLimit && config.Model != "" {
@@ -117,7 +117,7 @@ func GetRandomFailure(config *common.Configuration) FailureSpec {
 	} else if randomType == common.FailureTypeModelNotFound && config.Model != "" {
 		failure.Message = fmt.Sprintf(modelNotFoundMessageTemplate, config.Model)
 	}
-	
+
 	return failure
 }
 
