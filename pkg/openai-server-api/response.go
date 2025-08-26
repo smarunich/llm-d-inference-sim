@@ -214,8 +214,8 @@ type CompletionError struct {
 	Type string `json:"type"`
 	// Param is the error's parameter
 	Param *string `json:"param"`
-	// Code is the error code string
-	Code string `json:"code,omitempty"`
+	// Code is the error code integer (same as HTTP status code)
+	Code int `json:"code,omitempty"`
 }
 
 // ErrorResponse wraps the error in the expected OpenAI format

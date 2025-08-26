@@ -20,6 +20,7 @@ import (
 	"fmt"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 )
 
 const (
@@ -28,61 +29,70 @@ const (
 	modelNotFoundMessageTemplate = "The model '%s-nonexistent' does not exist"
 )
 
-type FailureSpec struct {
+type FailureInfo struct {
 	StatusCode int
-	ErrorType  string
-	ErrorCode  string
-	Message    string
-	Param      *string
+	Error      openaiserverapi.CompletionError
 }
 
-var predefinedFailures = map[string]FailureSpec{
+var predefinedFailures = map[string]FailureInfo{
 	common.FailureTypeRateLimit: {
 		StatusCode: 429,
-		ErrorType:  "rate_limit_exceeded",
-		ErrorCode:  "rate_limit_exceeded",
-		Message:    rateLimitMessageTemplate,
-		Param:      nil,
+		Error: openaiserverapi.CompletionError{
+			Message: rateLimitMessageTemplate,
+			Type:    "rate_limit_exceeded",
+			Code:    429,
+			Param:   nil,
+		},
 	},
 	common.FailureTypeInvalidAPIKey: {
 		StatusCode: 401,
-		ErrorType:  "invalid_request_error",
-		ErrorCode:  "invalid_api_key",
-		Message:    "Incorrect API key provided",
-		Param:      nil,
+		Error: openaiserverapi.CompletionError{
+			Message: "Incorrect API key provided",
+			Type:    "invalid_request_error",
+			Code:    401,
+			Param:   nil,
+		},
 	},
 	common.FailureTypeContextLength: {
 		StatusCode: 400,
-		ErrorType:  "invalid_request_error",
-		ErrorCode:  "context_length_exceeded",
-		Message:    "This model's maximum context length is 4096 tokens. However, your messages resulted in 4500 tokens.",
-		Param:      stringPtr("messages"),
+		Error: openaiserverapi.CompletionError{
+			Message: "This model's maximum context length is 4096 tokens. However, your messages resulted in 4500 tokens.",
+			Type:    "invalid_request_error",
+			Code:    400,
+			Param:   stringPtr("messages"),
+		},
 	},
 	common.FailureTypeServerError: {
 		StatusCode: 503,
-		ErrorType:  "server_error",
-		ErrorCode:  "server_error",
-		Message:    "The server is overloaded or not ready yet.",
-		Param:      nil,
+		Error: openaiserverapi.CompletionError{
+			Message: "The server is overloaded or not ready yet.",
+			Type:    "server_error",
+			Code:    503,
+			Param:   nil,
+		},
 	},
 	common.FailureTypeInvalidRequest: {
 		StatusCode: 400,
-		ErrorType:  "invalid_request_error",
-		ErrorCode:  "invalid_request_error",
-		Message:    "Invalid request: missing required parameter 'model'.",
-		Param:      stringPtr("model"),
+		Error: openaiserverapi.CompletionError{
+			Message: "Invalid request: missing required parameter 'model'.",
+			Type:    "invalid_request_error",
+			Code:    400,
+			Param:   stringPtr("model"),
+		},
 	},
 	common.FailureTypeModelNotFound: {
 		StatusCode: 404,
-		ErrorType:  "invalid_request_error",
-		ErrorCode:  "model_not_found",
-		Message:    modelNotFoundMessageTemplate,
-		Param:      stringPtr("model"),
+		Error: openaiserverapi.CompletionError{
+			Message: modelNotFoundMessageTemplate,
+			Type:    "invalid_request_error",
+			Code:    404,
+			Param:   stringPtr("model"),
+		},
 	},
 }
 
-// ShouldInjectFailure determines whether to inject a failure based on configuration
-func ShouldInjectFailure(config *common.Configuration) bool {
+// shouldInjectFailure determines whether to inject a failure based on configuration
+func shouldInjectFailure(config *common.Configuration) bool {
 	if config.FailureInjectionRate == 0 {
 		return false
 	}
@@ -91,7 +101,7 @@ func ShouldInjectFailure(config *common.Configuration) bool {
 }
 
 // GetRandomFailure returns a random failure from configured types or all types if none specified
-func GetRandomFailure(config *common.Configuration) FailureSpec {
+func GetRandomFailure(config *common.Configuration) FailureInfo {
 	var availableFailures []string
 	if len(config.FailureTypes) == 0 {
 		// Use all failure types if none specified
@@ -113,9 +123,9 @@ func GetRandomFailure(config *common.Configuration) FailureSpec {
 	// Customize message with current model name
 	failure := predefinedFailures[randomType]
 	if randomType == common.FailureTypeRateLimit && config.Model != "" {
-		failure.Message = fmt.Sprintf(rateLimitMessageTemplate, config.Model)
+		failure.Error.Message = fmt.Sprintf(rateLimitMessageTemplate, config.Model)
 	} else if randomType == common.FailureTypeModelNotFound && config.Model != "" {
-		failure.Message = fmt.Sprintf(modelNotFoundMessageTemplate, config.Model)
+		failure.Error.Message = fmt.Sprintf(modelNotFoundMessageTemplate, config.Model)
 	}
 
 	return failure
