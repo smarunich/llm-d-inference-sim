@@ -514,20 +514,6 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 		}
 	}
 
-	if config.HashSeed == "" {
-		hashSeed := os.Getenv("PYTHONHASHSEED")
-		if hashSeed != "" {
-			config.HashSeed = hashSeed
-		}
-	}
-
-	if config.HashSeed == "" {
-		hashSeed := os.Getenv("PYTHONHASHSEED")
-		if hashSeed != "" {
-			config.HashSeed = hashSeed
-		}
-	}
-
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
