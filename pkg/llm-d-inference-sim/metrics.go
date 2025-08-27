@@ -19,9 +19,9 @@ limitations under the License.
 package llmdinferencesim
 
 import (
+	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -157,9 +157,8 @@ func (s *VllmSimulator) reportRunningRequests() {
 		return
 	}
 	if s.runningRequests != nil {
-		nRunningReqs := atomic.LoadInt64(&(s.nRunningReqs))
 		s.runningRequests.WithLabelValues(
-			s.getDisplayedModelName(s.config.Model)).Set(float64(nRunningReqs))
+			s.getDisplayedModelName(s.config.Model)).Set(float64(s.nRunningReqs))
 	}
 }
 
@@ -169,8 +168,46 @@ func (s *VllmSimulator) reportWaitingRequests() {
 		return
 	}
 	if s.waitingRequests != nil {
-		nWaitingReqs := atomic.LoadInt64(&(s.nWaitingReqs))
 		s.waitingRequests.WithLabelValues(
-			s.getDisplayedModelName(s.config.Model)).Set(float64(nWaitingReqs))
+			s.getDisplayedModelName(s.config.Model)).Set(float64(s.nWaitingReqs))
+	}
+}
+
+func (s *VllmSimulator) unregisterPrometheus() {
+	prometheus.Unregister(s.loraInfo)
+	prometheus.Unregister(s.runningRequests)
+	prometheus.Unregister(s.waitingRequests)
+	prometheus.Unregister(s.kvCacheUsagePercentage)
+}
+
+// startMetricsUpdaters starts the various metrics updaters
+func (s *VllmSimulator) startMetricsUpdaters(ctx context.Context) {
+	go s.waitingRequestsUpdater(ctx)
+	go s.runningRequestsUpdater(ctx)
+}
+
+// waitingRequestsUpdater updates the waiting requests metric by listening on the relevant channel
+func (s *VllmSimulator) waitingRequestsUpdater(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case inc := <-s.waitingReqChan:
+			s.nWaitingReqs += inc
+			s.reportWaitingRequests()
+		}
+	}
+}
+
+// runningRequestsUpdater updates the running requests metric by listening on the relevant channel
+func (s *VllmSimulator) runningRequestsUpdater(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case inc := <-s.runReqChan:
+			s.nRunningReqs += inc
+			s.reportRunningRequests()
+		}
 	}
 }
