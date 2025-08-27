@@ -21,6 +21,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+
+	"github.com/valyala/fasthttp"
 )
 
 // CompletionResponse interface representing both completion response types (text and chat)
@@ -218,7 +220,43 @@ type CompletionError struct {
 	Code int `json:"code,omitempty"`
 }
 
+// NewCompletionError creates a new CompletionError
+func NewCompletionError(message string, code int, param *string) CompletionError {
+	return CompletionError{
+		Message: message,
+		Code:    code,
+		Type:    ErrorCodeToType(code),
+		Param:   param,
+	}
+}
+
 // ErrorResponse wraps the error in the expected OpenAI format
 type ErrorResponse struct {
 	Error CompletionError `json:"error"`
+}
+
+// ErrorCodeToType maps error code to error type according to https://www.npmjs.com/package/openai
+func ErrorCodeToType(code int) string {
+	errorType := ""
+	switch code {
+	case fasthttp.StatusBadRequest:
+		errorType = "BadRequestError"
+	case fasthttp.StatusUnauthorized:
+		errorType = "AuthenticationError"
+	case fasthttp.StatusForbidden:
+		errorType = "PermissionDeniedError"
+	case fasthttp.StatusNotFound:
+		errorType = "NotFoundError"
+	case fasthttp.StatusUnprocessableEntity:
+		errorType = "UnprocessableEntityError"
+	case fasthttp.StatusTooManyRequests:
+		errorType = "RateLimitError"
+	default:
+		if code >= fasthttp.StatusInternalServerError {
+			errorType = "InternalServerError"
+		} else {
+			errorType = "APIConnectionError"
+		}
+	}
+	return errorType
 }

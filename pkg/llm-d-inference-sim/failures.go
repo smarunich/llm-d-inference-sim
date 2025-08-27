@@ -29,66 +29,18 @@ const (
 	modelNotFoundMessageTemplate = "The model '%s-nonexistent' does not exist"
 )
 
-type FailureInfo struct {
-	StatusCode int
-	Error      openaiserverapi.CompletionError
-}
-
-var predefinedFailures = map[string]FailureInfo{
-	common.FailureTypeRateLimit: {
-		StatusCode: 429,
-		Error: openaiserverapi.CompletionError{
-			Message: rateLimitMessageTemplate,
-			Type:    "rate_limit_exceeded",
-			Code:    429,
-			Param:   nil,
-		},
-	},
-	common.FailureTypeInvalidAPIKey: {
-		StatusCode: 401,
-		Error: openaiserverapi.CompletionError{
-			Message: "Incorrect API key provided",
-			Type:    "invalid_request_error",
-			Code:    401,
-			Param:   nil,
-		},
-	},
-	common.FailureTypeContextLength: {
-		StatusCode: 400,
-		Error: openaiserverapi.CompletionError{
-			Message: "This model's maximum context length is 4096 tokens. However, your messages resulted in 4500 tokens.",
-			Type:    "invalid_request_error",
-			Code:    400,
-			Param:   stringPtr("messages"),
-		},
-	},
-	common.FailureTypeServerError: {
-		StatusCode: 503,
-		Error: openaiserverapi.CompletionError{
-			Message: "The server is overloaded or not ready yet.",
-			Type:    "server_error",
-			Code:    503,
-			Param:   nil,
-		},
-	},
-	common.FailureTypeInvalidRequest: {
-		StatusCode: 400,
-		Error: openaiserverapi.CompletionError{
-			Message: "Invalid request: missing required parameter 'model'.",
-			Type:    "invalid_request_error",
-			Code:    400,
-			Param:   stringPtr("model"),
-		},
-	},
-	common.FailureTypeModelNotFound: {
-		StatusCode: 404,
-		Error: openaiserverapi.CompletionError{
-			Message: modelNotFoundMessageTemplate,
-			Type:    "invalid_request_error",
-			Code:    404,
-			Param:   stringPtr("model"),
-		},
-	},
+var predefinedFailures = map[string]openaiserverapi.CompletionError{
+	common.FailureTypeRateLimit:     openaiserverapi.NewCompletionError(rateLimitMessageTemplate, 429, nil),
+	common.FailureTypeInvalidAPIKey: openaiserverapi.NewCompletionError("Incorrect API key provided.", 401, nil),
+	common.FailureTypeContextLength: openaiserverapi.NewCompletionError(
+		"This model's maximum context length is 4096 tokens. However, your messages resulted in 4500 tokens.",
+		400, stringPtr("messages")),
+	common.FailureTypeServerError: openaiserverapi.NewCompletionError(
+		"The server is overloaded or not ready yet.", 503, nil),
+	common.FailureTypeInvalidRequest: openaiserverapi.NewCompletionError(
+		"Invalid request: missing required parameter 'model'.", 400, stringPtr("model")),
+	common.FailureTypeModelNotFound: openaiserverapi.NewCompletionError(modelNotFoundMessageTemplate,
+		404, stringPtr("model")),
 }
 
 // shouldInjectFailure determines whether to inject a failure based on configuration
@@ -100,8 +52,8 @@ func shouldInjectFailure(config *common.Configuration) bool {
 	return common.RandomInt(1, 100) <= config.FailureInjectionRate
 }
 
-// GetRandomFailure returns a random failure from configured types or all types if none specified
-func GetRandomFailure(config *common.Configuration) FailureInfo {
+// getRandomFailure returns a random failure from configured types or all types if none specified
+func getRandomFailure(config *common.Configuration) openaiserverapi.CompletionError {
 	var availableFailures []string
 	if len(config.FailureTypes) == 0 {
 		// Use all failure types if none specified
@@ -123,9 +75,9 @@ func GetRandomFailure(config *common.Configuration) FailureInfo {
 	// Customize message with current model name
 	failure := predefinedFailures[randomType]
 	if randomType == common.FailureTypeRateLimit && config.Model != "" {
-		failure.Error.Message = fmt.Sprintf(rateLimitMessageTemplate, config.Model)
+		failure.Message = fmt.Sprintf(rateLimitMessageTemplate, config.Model)
 	} else if randomType == common.FailureTypeModelNotFound && config.Model != "" {
-		failure.Error.Message = fmt.Sprintf(modelNotFoundMessageTemplate, config.Model)
+		failure.Message = fmt.Sprintf(modelNotFoundMessageTemplate, config.Model)
 	}
 
 	return failure

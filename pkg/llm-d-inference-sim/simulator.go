@@ -284,20 +284,20 @@ func (s *VllmSimulator) HandleUnloadLora(ctx *fasthttp.RequestCtx) {
 	s.unloadLora(ctx)
 }
 
-func (s *VllmSimulator) validateRequest(req openaiserverapi.CompletionRequest) (string, string, int) {
+func (s *VllmSimulator) validateRequest(req openaiserverapi.CompletionRequest) (string, int) {
 	if !s.isValidModel(req.GetModel()) {
-		return fmt.Sprintf("The model `%s` does not exist.", req.GetModel()), "NotFoundError", fasthttp.StatusNotFound
+		return fmt.Sprintf("The model `%s` does not exist.", req.GetModel()), fasthttp.StatusNotFound
 	}
 
 	if req.GetMaxCompletionTokens() != nil && *req.GetMaxCompletionTokens() <= 0 {
-		return "Max completion tokens and max tokens should be positive", "Invalid request", fasthttp.StatusBadRequest
+		return "Max completion tokens and max tokens should be positive", fasthttp.StatusBadRequest
 	}
 
 	if req.IsDoRemoteDecode() && req.IsStream() {
-		return "Prefill does not support streaming", "Invalid request", fasthttp.StatusBadRequest
+		return "Prefill does not support streaming", fasthttp.StatusBadRequest
 	}
 
-	return "", "", fasthttp.StatusOK
+	return "", fasthttp.StatusOK
 }
 
 // isValidModel checks if the given model is the base model or one of "loaded" LoRAs
@@ -331,7 +331,7 @@ func (s *VllmSimulator) isLora(model string) bool {
 func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatCompletion bool) {
 	// Check if we should inject a failure
 	if shouldInjectFailure(s.config) {
-		failure := GetRandomFailure(s.config)
+		failure := getRandomFailure(s.config)
 		s.sendCompletionError(ctx, failure, true)
 		return
 	}
@@ -343,17 +343,9 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		return
 	}
 
-	errMsg, errType, errCode := s.validateRequest(vllmReq)
+	errMsg, errCode := s.validateRequest(vllmReq)
 	if errMsg != "" {
-		s.sendCompletionError(ctx, FailureInfo{
-			StatusCode: errCode,
-			Error: openaiserverapi.CompletionError{
-				Message: errMsg,
-				Type:    errType,
-				Code:    errCode,
-				Param:   nil,
-			},
-		}, false)
+		s.sendCompletionError(ctx, openaiserverapi.NewCompletionError(errMsg, errCode, nil), false)
 		return
 	}
 
@@ -380,16 +372,9 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 	completionTokens := vllmReq.GetMaxCompletionTokens()
 	isValid, actualCompletionTokens, totalTokens := common.ValidateContextWindow(promptTokens, completionTokens, s.config.MaxModelLen)
 	if !isValid {
-		s.sendCompletionError(ctx, FailureInfo{
-			StatusCode: fasthttp.StatusBadRequest,
-			Error: openaiserverapi.CompletionError{
-				Message: fmt.Sprintf("This model's maximum context length is %d tokens. However, you requested %d tokens (%d in the messages, %d in the completion). Please reduce the length of the messages or completion",
-					s.config.MaxModelLen, totalTokens, promptTokens, actualCompletionTokens),
-				Type:  "BadRequestError",
-				Code:  fasthttp.StatusBadRequest,
-				Param: nil,
-			},
-		}, false)
+		message := fmt.Sprintf("This model's maximum context length is %d tokens. However, you requested %d tokens (%d in the messages, %d in the completion). Please reduce the length of the messages or completion",
+			s.config.MaxModelLen, totalTokens, promptTokens, actualCompletionTokens)
+		s.sendCompletionError(ctx, openaiserverapi.NewCompletionError(message, fasthttp.StatusBadRequest, nil), false)
 		return
 	}
 
@@ -544,39 +529,17 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 }
 
 // sendCompletionError sends an error response for the current completion request
-// The first parameter can be either a string message or a FailureInfo
 // isInjected indicates if this is an injected failure for logging purposes
-func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, errorInfo interface{}, isInjected bool) {
-	var compErr openaiserverapi.CompletionError
-	var statusCode int
-
-	switch v := errorInfo.(type) {
-	case string:
-		// Legacy call with string message (backward compatibility)
-		compErr = openaiserverapi.CompletionError{
-			Message: v,
-			Type:    "BadRequestError",
-			Code:    400,
-			Param:   nil,
-		}
-		statusCode = fasthttp.StatusBadRequest
-	case FailureInfo:
-		// New call with FailureInfo
-		compErr = v.Error
-		statusCode = v.StatusCode
-	default:
-		// For calls with msg, errType, and code - need to be updated in calling code
-		panic("sendCompletionError called with unexpected type")
-	}
-
-	errorResp := openaiserverapi.ErrorResponse{
-		Error: compErr,
-	}
-
+func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx,
+	compErr openaiserverapi.CompletionError, isInjected bool) {
 	if isInjected {
 		s.logger.Info("Injecting failure", "type", compErr.Type, "message", compErr.Message)
 	} else {
 		s.logger.Error(nil, compErr.Message)
+	}
+
+	errorResp := openaiserverapi.ErrorResponse{
+		Error: compErr,
 	}
 
 	data, err := json.Marshal(errorResp)
@@ -584,7 +547,7 @@ func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, errorInfo 
 		ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
 	} else {
 		ctx.SetContentType("application/json")
-		ctx.SetStatusCode(statusCode)
+		ctx.SetStatusCode(compErr.Code)
 		ctx.SetBody(data)
 	}
 }

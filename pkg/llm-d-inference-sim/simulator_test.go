@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
+	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/openai/openai-go"
@@ -925,7 +926,7 @@ var _ = Describe("Simulator", func() {
 				ok := errors.As(err, &openaiError)
 				Expect(ok).To(BeTrue())
 				Expect(openaiError.StatusCode).To(Equal(429))
-				Expect(openaiError.Type).To(Equal("rate_limit_exceeded"))
+				Expect(openaiError.Type).To(Equal(openaiserverapi.ErrorCodeToType(429)))
 				Expect(strings.Contains(openaiError.Message, model)).To(BeTrue())
 			})
 		})
@@ -965,7 +966,8 @@ var _ = Describe("Simulator", func() {
 
 					// Should only be one of the specified types
 					Expect(openaiError.StatusCode == 401 || openaiError.StatusCode == 503).To(BeTrue())
-					Expect(openaiError.Type == "invalid_request_error" || openaiError.Type == "server_error").To(BeTrue())
+					Expect(openaiError.Type == openaiserverapi.ErrorCodeToType(401) ||
+						openaiError.Type == openaiserverapi.ErrorCodeToType(503)).To(BeTrue())
 				}
 			})
 		})
@@ -1003,7 +1005,7 @@ var _ = Describe("Simulator", func() {
 
 		Context("testing all predefined failure types", func() {
 			DescribeTable("should return correct error for each failure type",
-				func(failureType string, expectedStatusCode int, expectedErrorType string, expectedErrorCode string) {
+				func(failureType string, expectedStatusCode int, expectedErrorType string) {
 					ctx := context.Background()
 					client, err := startServerWithArgs(ctx, "failure", []string{
 						"cmd", "--model", model,
@@ -1034,12 +1036,12 @@ var _ = Describe("Simulator", func() {
 					// Note: OpenAI Go client doesn't directly expose the error code field,
 					// but we can verify via status code and type
 				},
-				Entry("rate_limit", common.FailureTypeRateLimit, 429, "rate_limit_exceeded", "rate_limit_exceeded"),
-				Entry("invalid_api_key", common.FailureTypeInvalidAPIKey, 401, "invalid_request_error", "invalid_api_key"),
-				Entry("context_length", common.FailureTypeContextLength, 400, "invalid_request_error", "context_length_exceeded"),
-				Entry("server_error", common.FailureTypeServerError, 503, "server_error", "server_error"),
-				Entry("invalid_request", common.FailureTypeInvalidRequest, 400, "invalid_request_error", "invalid_request_error"),
-				Entry("model_not_found", common.FailureTypeModelNotFound, 404, "invalid_request_error", "model_not_found"),
+				Entry("rate_limit", common.FailureTypeRateLimit, 429, openaiserverapi.ErrorCodeToType(429)),
+				Entry("invalid_api_key", common.FailureTypeInvalidAPIKey, 401, openaiserverapi.ErrorCodeToType(401)),
+				Entry("context_length", common.FailureTypeContextLength, 400, openaiserverapi.ErrorCodeToType(400)),
+				Entry("server_error", common.FailureTypeServerError, 503, openaiserverapi.ErrorCodeToType(503)),
+				Entry("invalid_request", common.FailureTypeInvalidRequest, 400, openaiserverapi.ErrorCodeToType(400)),
+				Entry("model_not_found", common.FailureTypeModelNotFound, 404, openaiserverapi.ErrorCodeToType(404)),
 			)
 		})
 	})

@@ -14,31 +14,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package llmdinferencesim_test
+package llmdinferencesim
 
 import (
 	"strings"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/llm-d/llm-d-inference-sim/pkg/common"
-	llmdinferencesim "github.com/llm-d/llm-d-inference-sim/pkg/llm-d-inference-sim"
+	openaiserverapi "github.com/llm-d/llm-d-inference-sim/pkg/openai-server-api"
 )
 
 var _ = Describe("Failures", func() {
-	// Note: shouldInjectFailure is now private, so we test it through GetRandomFailure behavior
+	Describe("getRandomFailure", Ordered, func() {
+		BeforeAll(func() {
+			common.InitRandom(time.Now().UnixNano())
+		})
 
-	Describe("GetRandomFailure", func() {
 		It("should return a failure from all types when none specified", func() {
 			config := &common.Configuration{
 				Model:        "test-model",
 				FailureTypes: []string{},
 			}
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(BeNumerically(">=", 400))
-			Expect(failure.Error.Message).ToNot(BeEmpty())
-			Expect(failure.Error.Type).ToNot(BeEmpty())
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(BeNumerically(">=", 400))
+			Expect(failure.Message).ToNot(BeEmpty())
+			Expect(failure.Type).ToNot(BeEmpty())
 		})
 
 		It("should return rate limit failure when specified", func() {
@@ -46,44 +49,40 @@ var _ = Describe("Failures", func() {
 				Model:        "test-model",
 				FailureTypes: []string{common.FailureTypeRateLimit},
 			}
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(Equal(429))
-			Expect(failure.Error.Type).To(Equal("rate_limit_exceeded"))
-			Expect(failure.Error.Code).To(Equal(429))
-			Expect(strings.Contains(failure.Error.Message, "test-model")).To(BeTrue())
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(Equal(429))
+			Expect(failure.Type).To(Equal(openaiserverapi.ErrorCodeToType(429)))
+			Expect(strings.Contains(failure.Message, "test-model")).To(BeTrue())
 		})
 
 		It("should return invalid API key failure when specified", func() {
 			config := &common.Configuration{
 				FailureTypes: []string{common.FailureTypeInvalidAPIKey},
 			}
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(Equal(401))
-			Expect(failure.Error.Type).To(Equal("invalid_request_error"))
-			Expect(failure.Error.Code).To(Equal(401))
-			Expect(failure.Error.Message).To(Equal("Incorrect API key provided"))
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(Equal(401))
+			Expect(failure.Type).To(Equal(openaiserverapi.ErrorCodeToType(401)))
+			Expect(failure.Message).To(Equal("Incorrect API key provided."))
 		})
 
 		It("should return context length failure when specified", func() {
 			config := &common.Configuration{
 				FailureTypes: []string{common.FailureTypeContextLength},
 			}
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(Equal(400))
-			Expect(failure.Error.Type).To(Equal("invalid_request_error"))
-			Expect(failure.Error.Code).To(Equal(400))
-			Expect(failure.Error.Param).ToNot(BeNil())
-			Expect(*failure.Error.Param).To(Equal("messages"))
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(Equal(400))
+			Expect(failure.Type).To(Equal(openaiserverapi.ErrorCodeToType(400)))
+			Expect(failure.Param).ToNot(BeNil())
+			Expect(*failure.Param).To(Equal("messages"))
 		})
 
 		It("should return server error when specified", func() {
 			config := &common.Configuration{
 				FailureTypes: []string{common.FailureTypeServerError},
 			}
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(Equal(503))
-			Expect(failure.Error.Type).To(Equal("server_error"))
-			Expect(failure.Error.Code).To(Equal(503))
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(Equal(503))
+			Expect(failure.Type).To(Equal(openaiserverapi.ErrorCodeToType(503)))
 		})
 
 		It("should return model not found failure when specified", func() {
@@ -91,11 +90,10 @@ var _ = Describe("Failures", func() {
 				Model:        "test-model",
 				FailureTypes: []string{common.FailureTypeModelNotFound},
 			}
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(Equal(404))
-			Expect(failure.Error.Type).To(Equal("invalid_request_error"))
-			Expect(failure.Error.Code).To(Equal(404))
-			Expect(strings.Contains(failure.Error.Message, "test-model-nonexistent")).To(BeTrue())
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(Equal(404))
+			Expect(failure.Type).To(Equal(openaiserverapi.ErrorCodeToType(404)))
+			Expect(strings.Contains(failure.Message, "test-model-nonexistent")).To(BeTrue())
 		})
 
 		It("should return server error as fallback for empty types", func() {
@@ -103,9 +101,9 @@ var _ = Describe("Failures", func() {
 				FailureTypes: []string{},
 			}
 			// This test is probabilistic since it randomly selects, but we can test structure
-			failure := llmdinferencesim.GetRandomFailure(config)
-			Expect(failure.StatusCode).To(BeNumerically(">=", 400))
-			Expect(failure.Error.Type).ToNot(BeEmpty())
+			failure := getRandomFailure(config)
+			Expect(failure.Code).To(BeNumerically(">=", 400))
+			Expect(failure.Type).ToNot(BeEmpty())
 		})
 	})
 })
