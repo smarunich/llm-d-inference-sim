@@ -116,15 +116,25 @@ For more details see the <a href="https://docs.vllm.ai/en/stable/getting_started
 - `min-tool-call-array-param-length`: the minimum possible length of array parameters in a tool call, optional, defaults to 1
 - `tool-call-not-required-param-probability`: the probability to add a parameter, that is not required, in a tool call, optional, defaults to 50
 - `object-tool-call-not-required-field-probability`: the probability to add a field, that is not required, in an object in a tool call, optional, defaults to 50
-<!-- 
 - `enable-kvcache`: if true, the KV cache support will be enabled in the simulator. In this case, the KV cache will be simulated, and ZQM events will be published when a KV cache block is added or evicted. 
 - `kv-cache-size`: the maximum number of token blocks in kv cache
 - `block-size`: token block size for contiguous chunks of tokens, possible values: 8,16,32,64,128
 - `tokenizers-cache-dir`: the directory for caching tokenizers
 - `hash-seed`: seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)
 - `zmq-endpoint`: ZMQ address to publish events
+- `zmq-max-connect-attempts`: the maximum number of ZMQ connection attempts, defaults to 0, maximum: 10
 - `event-batch-size`: the maximum number of kv-cache events to be sent together, defaults to 16
--->
+- `failure-injection-rate`: probability (0-100) of injecting failures, optional, default is 0
+- `failure-types`: list of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found), optional, if empty all types are used
+- `fake-metrics`: represents a predefined set of metrics to be sent to Prometheus as a substitute for the real metrics. When specified, only these fake metrics will be reported — real metrics and fake metrics will never be reported together. The set should include values for 
+    - `running-requests`
+    - `waiting-requests`
+    - `kv-cache-usage`
+    - `loras` - an array containing LoRA information objects, each with the fields: `running` (a comma-separated list of LoRAs in use by running requests), `waiting` (a comma-separated list of LoRAs to be used by waiting requests), and `timestamp` (seconds since Jan 1 1970, the timestamp of this metric).  
+
+    Example:
+      {"running-requests":10,"waiting-requests":30,"kv-cache-usage":0.4,"loras":[{"running":"lora4,lora2","waiting":"lora3","timestamp":1257894567},{"running":"lora4,lora3","waiting":"","timestamp":1257894569}]}
+
 In addition, as we are using klog, the following parameters are available:
 - `add_dir_header`: if true, adds the file directory to the header of the log messages
 - `alsologtostderr`: log to standard error as well as files (no effect when -logtostderr=true)
@@ -140,7 +150,9 @@ In addition, as we are using klog, the following parameters are available:
 - `v`: number for the log level verbosity
 - `vmodule`: comma-separated list of pattern=N settings for file-filtered logging
 
----
+## Environment variables
+- `POD_NAME`: the simulator pod name. If defined, the response will contain the HTTP header `x-inference-pod` with this value
+- `POD_NAMESPACE`: the simulator pod namespace. If defined, the response will contain the HTTP header `x-inference-namespace` with this value
 
 ## Migrating from releases prior to v0.2.0
 - `max-running-requests` was replaced by `max-num-seqs`
@@ -155,6 +167,8 @@ make image-build
 ```
 Please note that the default image tag is `ghcr.io/llm-d/llm-d-inference-sim:dev`. <br>
 The following environment variables can be used to change the image tag: `REGISTRY`, `SIM_TAG`, `IMAGE_TAG_BASE` or `IMG`.
+
+Note: On macOS, use `make image-build TARGETOS=linux` to pull the correct base image.
 
 ### Running
 To run the vLLM Simulator image under Docker, run:
@@ -185,6 +199,13 @@ To run the vLLM simulator in a Kubernetes cluster, run:
 ```bash
 kubectl apply -f manifests/deployment.yaml
 ```
+
+When testing locally with kind, build the docker image with `make build-image` then load into the cluster:
+```shell
+kind load --name kind docker-image ghcr.io/llm-d/llm-d-inference-sim:dev
+```
+
+Update the `deployment.yaml` file to use the dev tag. 
 
 To verify the deployment is available, run:
 ```bash

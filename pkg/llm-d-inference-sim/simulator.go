@@ -20,16 +20,16 @@ package llmdinferencesim
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/go-logr/logr"
-	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/valyala/fasthttp"
@@ -46,6 +46,13 @@ const (
 	textCompletionObject      = "text_completion"
 	chatCompletionObject      = "chat.completion"
 	chatCompletionChunkObject = "chat.completion.chunk"
+
+	podHeader       = "x-inference-pod"
+	namespaceHeader = "x-inference-namespace"
+	podNameEnv      = "POD_NAME"
+	podNsEnv        = "POD_NAMESPACE"
+
+	maxNumberOfRequests = 1000
 )
 
 // VllmSimulator simulates vLLM server supporting OpenAI API
@@ -63,8 +70,12 @@ type VllmSimulator struct {
 	waitingLoras sync.Map
 	// nRunningReqs is the number of inference requests that are currently being processed
 	nRunningReqs int64
+	// runReqChan is a channel to update nRunningReqs
+	runReqChan chan int64
 	// nWaitingReqs is the number of inference requests that are waiting to be processed
 	nWaitingReqs int64
+	// waitingReqChan is a channel to update nWaitingReqs
+	waitingReqChan chan int64
 	// loraInfo is prometheus gauge
 	loraInfo *prometheus.GaugeVec
 	// runningRequests is prometheus gauge
@@ -79,20 +90,28 @@ type VllmSimulator struct {
 	toolsValidator *openaiserverapi.Validator
 	// kv cache functionality
 	kvcacheHelper *kvcache.KVCacheHelper
+	// namespace where simulator is running
+	namespace string
+	// pod name of simulator
+	pod string
 }
 
 // New creates a new VllmSimulator instance with the given logger
 func New(logger logr.Logger) (*VllmSimulator, error) {
-	toolsValidtor, err := openaiserverapi.CreateValidator()
+	toolsValidator, err := openaiserverapi.CreateValidator()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tools validator: %s", err)
 	}
 
 	return &VllmSimulator{
 		logger:         logger,
-		reqChan:        make(chan *openaiserverapi.CompletionReqCtx, 1000),
-		toolsValidator: toolsValidtor,
+		reqChan:        make(chan *openaiserverapi.CompletionReqCtx, maxNumberOfRequests),
+		toolsValidator: toolsValidator,
 		kvcacheHelper:  nil, // kvcache helper will be created only if required after reading configuration
+		namespace:      os.Getenv(podNsEnv),
+		pod:            os.Getenv(podNameEnv),
+		runReqChan:     make(chan int64, maxNumberOfRequests),
+		waitingReqChan: make(chan int64, maxNumberOfRequests),
 	}, nil
 }
 
@@ -103,7 +122,13 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	s.config = config
+
+	err = s.showConfig(s.logger)
+	if err != nil {
+		return err
+	}
 
 	for _, lora := range config.LoraModules {
 		s.loraAdaptors.Store(lora.Name, "")
@@ -130,13 +155,16 @@ func (s *VllmSimulator) Start(ctx context.Context) error {
 	for i := 1; i <= s.config.MaxNumSeqs; i++ {
 		go s.reqProcessingWorker(ctx, i)
 	}
+
+	s.startMetricsUpdaters(ctx)
+
 	listener, err := s.newListener()
 	if err != nil {
 		return err
 	}
 
-	// start the http server
-	return s.startServer(listener)
+	// start the http server with context support
+	return s.startServer(ctx, listener)
 }
 
 func (s *VllmSimulator) newListener() (net.Listener, error) {
@@ -149,7 +177,7 @@ func (s *VllmSimulator) newListener() (net.Listener, error) {
 }
 
 // startServer starts http server on port defined in command line
-func (s *VllmSimulator) startServer(listener net.Listener) error {
+func (s *VllmSimulator) startServer(ctx context.Context, listener net.Listener) error {
 	r := fasthttprouter.New()
 
 	// support completion APIs
@@ -172,13 +200,33 @@ func (s *VllmSimulator) startServer(listener net.Listener) error {
 		Logger:       s,
 	}
 
-	defer func() {
-		if err := listener.Close(); err != nil {
-			s.logger.Error(err, "server listener close failed")
-		}
+	// Start server in a goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		s.logger.Info("HTTP server starting")
+		serverErr <- server.Serve(listener)
 	}()
 
-	return server.Serve(listener)
+	// Wait for either context cancellation or server error
+	select {
+	case <-ctx.Done():
+		s.logger.Info("Shutdown signal received, shutting down HTTP server gracefully")
+
+		// Gracefully shutdown the server
+		if err := server.Shutdown(); err != nil {
+			s.logger.Error(err, "Error during server shutdown")
+			return err
+		}
+
+		s.logger.Info("HTTP server stopped")
+		return nil
+
+	case err := <-serverErr:
+		if err != nil {
+			s.logger.Error(err, "HTTP server failed")
+		}
+		return err
+	}
 }
 
 // Print prints to a log, implementation of fasthttp.Logger
@@ -188,7 +236,7 @@ func (s *VllmSimulator) Printf(format string, args ...interface{}) {
 
 // readRequest reads and parses data from the body of the given request according the type defined by isChatCompletion
 func (s *VllmSimulator) readRequest(ctx *fasthttp.RequestCtx, isChatCompletion bool) (openaiserverapi.CompletionRequest, error) {
-	requestID := uuid.NewString()
+	requestID := common.GenerateUUIDString()
 
 	if isChatCompletion {
 		var req openaiserverapi.ChatCompletionRequest
@@ -246,20 +294,20 @@ func (s *VllmSimulator) HandleUnloadLora(ctx *fasthttp.RequestCtx) {
 	s.unloadLora(ctx)
 }
 
-func (s *VllmSimulator) validateRequest(req openaiserverapi.CompletionRequest) (string, string, int) {
+func (s *VllmSimulator) validateRequest(req openaiserverapi.CompletionRequest) (string, int) {
 	if !s.isValidModel(req.GetModel()) {
-		return fmt.Sprintf("The model `%s` does not exist.", req.GetModel()), "NotFoundError", fasthttp.StatusNotFound
+		return fmt.Sprintf("The model `%s` does not exist.", req.GetModel()), fasthttp.StatusNotFound
 	}
 
 	if req.GetMaxCompletionTokens() != nil && *req.GetMaxCompletionTokens() <= 0 {
-		return "Max completion tokens and max tokens should be positive", "Invalid request", fasthttp.StatusBadRequest
+		return "Max completion tokens and max tokens should be positive", fasthttp.StatusBadRequest
 	}
 
 	if req.IsDoRemoteDecode() && req.IsStream() {
-		return "Prefill does not support streaming", "Invalid request", fasthttp.StatusBadRequest
+		return "Prefill does not support streaming", fasthttp.StatusBadRequest
 	}
 
-	return "", "", fasthttp.StatusOK
+	return "", fasthttp.StatusOK
 }
 
 // isValidModel checks if the given model is the base model or one of "loaded" LoRAs
@@ -291,6 +339,13 @@ func (s *VllmSimulator) isLora(model string) bool {
 
 // handleCompletions general completion requests handler, support both text and chat completion APIs
 func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatCompletion bool) {
+	// Check if we should inject a failure
+	if shouldInjectFailure(s.config) {
+		failure := getRandomFailure(s.config)
+		s.sendCompletionError(ctx, failure, true)
+		return
+	}
+
 	vllmReq, err := s.readRequest(ctx, isChatCompletion)
 	if err != nil {
 		s.logger.Error(err, "failed to read and parse request body")
@@ -298,9 +353,9 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		return
 	}
 
-	errMsg, errType, errCode := s.validateRequest(vllmReq)
+	errMsg, errCode := s.validateRequest(vllmReq)
 	if errMsg != "" {
-		s.sendCompletionError(ctx, errMsg, errType, errCode)
+		s.sendCompletionError(ctx, openaiserverapi.NewCompletionError(errMsg, errCode, nil), false)
 		return
 	}
 
@@ -327,8 +382,9 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 	completionTokens := vllmReq.GetMaxCompletionTokens()
 	isValid, actualCompletionTokens, totalTokens := common.ValidateContextWindow(promptTokens, completionTokens, s.config.MaxModelLen)
 	if !isValid {
-		s.sendCompletionError(ctx, fmt.Sprintf("This model's maximum context length is %d tokens. However, you requested %d tokens (%d in the messages, %d in the completion). Please reduce the length of the messages or completion",
-			s.config.MaxModelLen, totalTokens, promptTokens, actualCompletionTokens), "BadRequestError", fasthttp.StatusBadRequest)
+		message := fmt.Sprintf("This model's maximum context length is %d tokens. However, you requested %d tokens (%d in the messages, %d in the completion). Please reduce the length of the messages or completion",
+			s.config.MaxModelLen, totalTokens, promptTokens, actualCompletionTokens)
+		s.sendCompletionError(ctx, openaiserverapi.NewCompletionError(message, fasthttp.StatusBadRequest, nil), false)
 		return
 	}
 
@@ -340,9 +396,8 @@ func (s *VllmSimulator) handleCompletions(ctx *fasthttp.RequestCtx, isChatComple
 		IsChatCompletion: isChatCompletion,
 		Wg:               &wg,
 	}
+	s.waitingReqChan <- 1
 	s.reqChan <- reqCtx
-	atomic.StoreInt64(&(s.nWaitingReqs), int64(len(s.reqChan)))
-	s.reportWaitingRequests()
 	wg.Wait()
 }
 
@@ -357,8 +412,8 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 				s.logger.Info("reqProcessingWorker worker exiting: reqChan closed")
 				return
 			}
-			atomic.StoreInt64(&(s.nWaitingReqs), int64(len(s.reqChan)))
-			s.reportWaitingRequests()
+
+			s.waitingReqChan <- -1
 
 			req := reqCtx.CompletionReq
 			model := req.GetModel()
@@ -381,8 +436,8 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 				// TODO - check if this request went to the waiting queue - add it to waiting map
 				s.reportLoras()
 			}
-			atomic.AddInt64(&(s.nRunningReqs), 1)
-			s.reportRunningRequests()
+
+			s.runReqChan <- 1
 
 			var responseTokens []string
 			var finishReason string
@@ -453,9 +508,7 @@ func (s *VllmSimulator) reqProcessingWorker(ctx context.Context, id int) {
 
 // decrease model usage reference number
 func (s *VllmSimulator) responseSentCallback(model string) {
-
-	atomic.AddInt64(&(s.nRunningReqs), -1)
-	s.reportRunningRequests()
+	s.runReqChan <- -1
 
 	// Only LoRA models require reference-count handling.
 	if !s.isLora(model) {
@@ -483,22 +536,25 @@ func (s *VllmSimulator) responseSentCallback(model string) {
 }
 
 // sendCompletionError sends an error response for the current completion request
-func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx, msg string, errType string, code int) {
-	compErr := openaiserverapi.CompletionError{
-		Object:  "error",
-		Message: msg,
-		Type:    errType,
-		Code:    code,
-		Param:   nil,
+// isInjected indicates if this is an injected failure for logging purposes
+func (s *VllmSimulator) sendCompletionError(ctx *fasthttp.RequestCtx,
+	compErr openaiserverapi.CompletionError, isInjected bool) {
+	if isInjected {
+		s.logger.Info("Injecting failure", "type", compErr.Type, "message", compErr.Message)
+	} else {
+		s.logger.Error(nil, compErr.Message)
 	}
-	s.logger.Error(nil, compErr.Message)
 
-	data, err := json.Marshal(compErr)
+	errorResp := openaiserverapi.ErrorResponse{
+		Error: compErr,
+	}
+
+	data, err := json.Marshal(errorResp)
 	if err != nil {
 		ctx.Error(err.Error(), fasthttp.StatusInternalServerError)
 	} else {
 		ctx.SetContentType("application/json")
-		ctx.SetStatusCode(code)
+		ctx.SetStatusCode(compErr.Code)
 		ctx.SetBody(data)
 	}
 }
@@ -534,7 +590,7 @@ func (s *VllmSimulator) HandleError(_ *fasthttp.RequestCtx, err error) {
 func (s *VllmSimulator) createCompletionResponse(isChatCompletion bool, respTokens []string, toolCalls []openaiserverapi.ToolCall,
 	finishReason *string, usageData *openaiserverapi.Usage, modelName string, doRemoteDecode bool) openaiserverapi.CompletionResponse {
 	baseResp := openaiserverapi.BaseCompletionResponse{
-		ID:      chatComplIDPrefix + uuid.NewString(),
+		ID:      chatComplIDPrefix + common.GenerateUUIDString(),
 		Created: time.Now().Unix(),
 		Model:   modelName,
 		Usage:   usageData,
@@ -599,9 +655,15 @@ func (s *VllmSimulator) sendResponse(isChatCompletion bool, ctx *fasthttp.Reques
 	totalMillisToWait := s.getTimeToFirstToken(doRemotePrefill) + s.getTotalInterTokenLatency(numOfTokens)
 	time.Sleep(time.Duration(totalMillisToWait) * time.Millisecond)
 
-	// TODO - maybe add pod id to response header for testing
 	ctx.Response.Header.SetContentType("application/json")
 	ctx.Response.Header.SetStatusCode(fasthttp.StatusOK)
+	// Add pod and namespace information to response headers for testing/debugging
+	if s.pod != "" {
+		ctx.Response.Header.Add(podHeader, s.pod)
+	}
+	if s.namespace != "" {
+		ctx.Response.Header.Add(namespaceHeader, s.namespace)
+	}
 	ctx.Response.SetBody(data)
 
 	s.responseSentCallback(modelName)
@@ -690,4 +752,37 @@ func (s *VllmSimulator) getDisplayedModelName(reqModel string) string {
 		return reqModel
 	}
 	return s.config.ServedModelNames[0]
+}
+
+func (s *VllmSimulator) showConfig(tgtLgr logr.Logger) error {
+	if tgtLgr == logr.Discard() {
+		return errors.New("target logger is nil, cannot show configuration")
+	}
+	cfgJSON, err := json.Marshal(s.config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
+	}
+
+	// clean LoraModulesString field
+	var m map[string]interface{}
+	err = json.Unmarshal(cfgJSON, &m)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+	}
+	m["lora-modules"] = m["LoraModules"]
+	delete(m, "LoraModules")
+	delete(m, "LoraModulesString")
+
+	// clean fake-metrics field
+	if field, ok := m["fake-metrics"].(map[string]interface{}); ok {
+		delete(field, "LorasString")
+	}
+
+	// show in JSON
+	cfgJSON, err = json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal configuration to JSON: %w", err)
+	}
+	tgtLgr.Info("Configuration:", "", string(cfgJSON))
+	return nil
 }

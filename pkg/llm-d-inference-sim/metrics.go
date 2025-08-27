@@ -19,9 +19,9 @@ limitations under the License.
 package llmdinferencesim
 
 import (
+	"context"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -96,25 +96,40 @@ func (s *VllmSimulator) createAndRegisterPrometheus() error {
 	return nil
 }
 
-// setInitialPrometheusMetrics send default values to prometheus
+// setInitialPrometheusMetrics sends the default values to prometheus or
+// the fake metrics if set
 func (s *VllmSimulator) setInitialPrometheusMetrics() {
+	var nRunningReqs, nWaitingReqs, kvCacheUsage float64
+	if s.config.FakeMetrics != nil {
+		nRunningReqs = float64(s.config.FakeMetrics.RunningRequests)
+		nWaitingReqs = float64(s.config.FakeMetrics.WaitingRequests)
+		kvCacheUsage = float64(s.config.FakeMetrics.KVCacheUsagePercentage)
+	}
 	modelName := s.getDisplayedModelName(s.config.Model)
-	s.loraInfo.WithLabelValues(
-		strconv.Itoa(s.config.MaxLoras),
-		"",
-		"").Set(float64(time.Now().Unix()))
+	s.runningRequests.WithLabelValues(modelName).Set(nRunningReqs)
+	s.waitingRequests.WithLabelValues(modelName).Set(nWaitingReqs)
+	s.kvCacheUsagePercentage.WithLabelValues(modelName).Set(kvCacheUsage)
 
-	s.nRunningReqs = 0
-	s.runningRequests.WithLabelValues(
-		modelName).Set(float64(s.nRunningReqs))
-	s.waitingRequests.WithLabelValues(
-		modelName).Set(float64(0))
-	s.kvCacheUsagePercentage.WithLabelValues(
-		modelName).Set(float64(0))
+	if s.config.FakeMetrics != nil && len(s.config.FakeMetrics.LoraMetrics) != 0 {
+		for _, metrics := range s.config.FakeMetrics.LoraMetrics {
+			s.loraInfo.WithLabelValues(
+				strconv.Itoa(s.config.MaxLoras),
+				metrics.RunningLoras,
+				metrics.WaitingLoras).Set(metrics.Timestamp)
+		}
+	} else {
+		s.loraInfo.WithLabelValues(
+			strconv.Itoa(s.config.MaxLoras),
+			"",
+			"").Set(float64(time.Now().Unix()))
+	}
 }
 
 // reportLoras sets information about loaded LoRA adapters
 func (s *VllmSimulator) reportLoras() {
+	if s.config.FakeMetrics != nil {
+		return
+	}
 	if s.loraInfo == nil {
 		// Happens in the tests
 		return
@@ -138,18 +153,61 @@ func (s *VllmSimulator) reportLoras() {
 
 // reportRunningRequests sets information about running completion requests
 func (s *VllmSimulator) reportRunningRequests() {
+	if s.config.FakeMetrics != nil {
+		return
+	}
 	if s.runningRequests != nil {
-		nRunningReqs := atomic.LoadInt64(&(s.nRunningReqs))
 		s.runningRequests.WithLabelValues(
-			s.getDisplayedModelName(s.config.Model)).Set(float64(nRunningReqs))
+			s.getDisplayedModelName(s.config.Model)).Set(float64(s.nRunningReqs))
 	}
 }
 
 // reportWaitingRequests sets information about waiting completion requests
 func (s *VllmSimulator) reportWaitingRequests() {
+	if s.config.FakeMetrics != nil {
+		return
+	}
 	if s.waitingRequests != nil {
-		nWaitingReqs := atomic.LoadInt64(&(s.nWaitingReqs))
 		s.waitingRequests.WithLabelValues(
-			s.getDisplayedModelName(s.config.Model)).Set(float64(nWaitingReqs))
+			s.getDisplayedModelName(s.config.Model)).Set(float64(s.nWaitingReqs))
+	}
+}
+
+func (s *VllmSimulator) unregisterPrometheus() {
+	prometheus.Unregister(s.loraInfo)
+	prometheus.Unregister(s.runningRequests)
+	prometheus.Unregister(s.waitingRequests)
+	prometheus.Unregister(s.kvCacheUsagePercentage)
+}
+
+// startMetricsUpdaters starts the various metrics updaters
+func (s *VllmSimulator) startMetricsUpdaters(ctx context.Context) {
+	go s.waitingRequestsUpdater(ctx)
+	go s.runningRequestsUpdater(ctx)
+}
+
+// waitingRequestsUpdater updates the waiting requests metric by listening on the relevant channel
+func (s *VllmSimulator) waitingRequestsUpdater(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case inc := <-s.waitingReqChan:
+			s.nWaitingReqs += inc
+			s.reportWaitingRequests()
+		}
+	}
+}
+
+// runningRequestsUpdater updates the running requests metric by listening on the relevant channel
+func (s *VllmSimulator) runningRequestsUpdater(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case inc := <-s.runReqChan:
+			s.nRunningReqs += inc
+			s.reportRunningRequests()
+		}
 	}
 }

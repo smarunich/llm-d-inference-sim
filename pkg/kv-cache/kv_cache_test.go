@@ -33,10 +33,11 @@ import (
 )
 
 const (
-	req1ID   = "req1"
-	req2ID   = "req2"
-	req3ID   = "req3"
-	endpoint = "tcp://localhost:5557"
+	req1ID      = "req1"
+	req2ID      = "req2"
+	req3ID      = "req3"
+	subEndpoint = "tcp://*:5557"
+	pubEndpoint = "tcp://localhost:5557"
 )
 
 type ActionType int
@@ -200,11 +201,12 @@ var _ = Describe("KV cache", Ordered, func() {
 				time.Sleep(300 * time.Millisecond)
 
 				config := &common.Configuration{
-					Port:           1234,
-					Model:          "model",
-					KVCacheSize:    test.cacheSize,
-					ZMQEndpoint:    endpoint,
-					EventBatchSize: 1,
+					Port:                  1234,
+					Model:                 "model",
+					KVCacheSize:           test.cacheSize,
+					ZMQEndpoint:           pubEndpoint,
+					ZMQMaxConnectAttempts: 3,
+					EventBatchSize:        1,
 				}
 
 				sub, topic := createSub(config)
@@ -303,10 +305,11 @@ var _ = Describe("KV cache", Ordered, func() {
 
 		It("should send events correctly", func() {
 			config := &common.Configuration{
-				Port:        1234,
-				Model:       "model",
-				KVCacheSize: 4,
-				ZMQEndpoint: endpoint,
+				Port:                  1234,
+				Model:                 "model",
+				KVCacheSize:           4,
+				ZMQEndpoint:           pubEndpoint,
+				ZMQMaxConnectAttempts: 3,
 			}
 
 			sub, topic := createSub(config)
@@ -412,10 +415,11 @@ var _ = Describe("KV cache", Ordered, func() {
 		for _, testCase := range testCases {
 			It(testCase.name, func() {
 				config := common.Configuration{
-					Port:        1234,
-					Model:       "model",
-					KVCacheSize: testCase.cacheSize,
-					ZMQEndpoint: endpoint,
+					Port:                  1234,
+					Model:                 "model",
+					KVCacheSize:           testCase.cacheSize,
+					ZMQEndpoint:           pubEndpoint,
+					ZMQMaxConnectAttempts: 3,
 				}
 				blockCache, err := newBlockCache(&config, GinkgoLogr)
 				Expect(err).NotTo(HaveOccurred())
@@ -496,9 +500,12 @@ func parseEvent(parts [][]byte, expectedTopic string, expectedSeq uint64) ([]uin
 	Expect(err).NotTo(HaveOccurred())
 	for _, rawEvent := range eventBatch.Events {
 		var taggedUnion []msgpack.RawMessage
-		err = msgpack.Unmarshal(rawEvent, &taggedUnion)
+		err := msgpack.Unmarshal(rawEvent, &taggedUnion)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(len(taggedUnion)).To(BeNumerically(">", 1))
+
+		payloadBytes, err := msgpack.Marshal(taggedUnion[1:])
+		Expect(err).NotTo(HaveOccurred())
 
 		var tag string
 		err = msgpack.Unmarshal(taggedUnion[0], &tag)
@@ -506,12 +513,12 @@ func parseEvent(parts [][]byte, expectedTopic string, expectedSeq uint64) ([]uin
 
 		switch tag {
 		case BlockStored:
-			var bs kvevents.BlockStoredEvent
-			err = msgpack.Unmarshal(rawEvent, &bs)
+			var bs kvevents.BlockStored
+			err = msgpack.Unmarshal(payloadBytes, &bs)
 			stored = append(stored, bs.BlockHashes...)
 		case BlockRemoved:
-			var br kvevents.BlockRemovedEvent
-			err = msgpack.Unmarshal(rawEvent, &br)
+			var br kvevents.BlockRemoved
+			err = msgpack.Unmarshal(payloadBytes, &br)
 			removed = append(removed, br.BlockHashes...)
 
 		default:
@@ -528,7 +535,7 @@ func createSub(config *common.Configuration) (*zmq.Socket, string) {
 	Expect(err).NotTo(HaveOccurred())
 	sub, err := zctx.NewSocket(zmq.SUB)
 	Expect(err).NotTo(HaveOccurred())
-	err = sub.Bind(endpoint)
+	err = sub.Bind(subEndpoint)
 	Expect(err).NotTo(HaveOccurred())
 	topic := createTopic(config)
 	err = sub.SetSubscribe(topic)

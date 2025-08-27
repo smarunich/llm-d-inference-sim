@@ -34,99 +34,139 @@ const (
 	vLLMDefaultPort = 8000
 	ModeRandom      = "random"
 	ModeEcho        = "echo"
+	// Failure type constants
+	FailureTypeRateLimit      = "rate_limit"
+	FailureTypeInvalidAPIKey  = "invalid_api_key"
+	FailureTypeContextLength  = "context_length"
+	FailureTypeServerError    = "server_error"
+	FailureTypeInvalidRequest = "invalid_request"
+	FailureTypeModelNotFound  = "model_not_found"
+	dummy                     = "dummy"
 )
 
 type Configuration struct {
 	// Port defines on which port the simulator runs
-	Port int `yaml:"port"`
+	Port int `yaml:"port" json:"port"`
 	// Model defines the current base model name
-	Model string `yaml:"model"`
+	Model string `yaml:"model" json:"model"`
 	// ServedModelNames is one or many model names exposed by the API
-	ServedModelNames []string `yaml:"served-model-name"`
+	ServedModelNames []string `yaml:"served-model-name" json:"served-model-name"`
 	// MaxLoras defines maximum number of loaded LoRAs
-	MaxLoras int `yaml:"max-loras"`
+	MaxLoras int `yaml:"max-loras" json:"max-loras"`
 	// MaxCPULoras defines maximum number of LoRAs to store in CPU memory
-	MaxCPULoras int `yaml:"max-cpu-loras"`
+	MaxCPULoras int `yaml:"max-cpu-loras" json:"max-cpu-loras"`
 	// MaxNumSeqs is maximum number of sequences per iteration (the maximum
 	// number of inference requests that could be processed at the same time)
-	MaxNumSeqs int `yaml:"max-num-seqs"`
+	MaxNumSeqs int `yaml:"max-num-seqs" json:"max-num-seqs"`
 	// MaxModelLen is the model's context window, the maximum number of tokens
 	// in a single request including input and output. Default value is 1024.
-	MaxModelLen int `yaml:"max-model-len"`
+	MaxModelLen int `yaml:"max-model-len" json:"max-model-len"`
 	// LoraModulesString is a list of LoRA adapters as strings
-	LoraModulesString []string `yaml:"lora-modules"`
+	LoraModulesString []string `yaml:"lora-modules" json:"lora-modules"`
 	// LoraModules is a list of LoRA adapters
 	LoraModules []LoraModule
 
 	// TimeToFirstToken time before the first token will be returned, in milliseconds
-	TimeToFirstToken int `yaml:"time-to-first-token"`
+	TimeToFirstToken int `yaml:"time-to-first-token" json:"time-to-first-token"`
 	// TimeToFirstTokenStdDev standard deviation for time before the first token will be returned,
 	// in milliseconds, optional, default is 0, can't be more than 30% of TimeToFirstToken, will not
 	// cause the actual time to first token to differ by more than 70% from TimeToFirstToken
-	TimeToFirstTokenStdDev int `yaml:"time-to-first-token-std-dev"`
+	TimeToFirstTokenStdDev int `yaml:"time-to-first-token-std-dev" json:"time-to-first-token-std-dev"`
 	// InterTokenLatency time between generated tokens, in milliseconds
-	InterTokenLatency int `yaml:"inter-token-latency"`
+	InterTokenLatency int `yaml:"inter-token-latency" json:"inter-token-latency"`
 	// InterTokenLatencyStdDev standard deviation for time between generated tokens, in milliseconds,
 	// optional, default is 0, can't be more than 30% of InterTokenLatency, will not cause the actual
 	// inter token latency to differ by more than 70% from InterTokenLatency
-	InterTokenLatencyStdDev int `yaml:"inter-token-latency-std-dev"`
+	InterTokenLatencyStdDev int `yaml:"inter-token-latency-std-dev" json:"inter-token-latency-std-dev"`
 	// KVCacheTransferLatency time to "transfer" kv-cache from another vLLM instance in case P/D is activated,
 	// in milliseconds
-	KVCacheTransferLatency int `yaml:"kv-cache-transfer-latency"`
+	KVCacheTransferLatency int `yaml:"kv-cache-transfer-latency" json:"kv-cache-transfer-latency"`
 	// KVCacheTransferLatencyStdDev standard deviation for time to "transfer" kv-cache from another
 	// vLLM instance in case P/D is activated, in milliseconds, optional, default is 0, can't be more
 	// than 30% of KVCacheTransferLatency, will not cause the actual latency to differ by more than 70% from
 	// KVCacheTransferLatency
-	KVCacheTransferLatencyStdDev int `yaml:"kv-cache-transfer-latency-std-dev"`
+	KVCacheTransferLatencyStdDev int `yaml:"kv-cache-transfer-latency-std-dev" json:"kv-cache-transfer-latency-std-dev"`
 
 	// Mode defines the simulator response generation mode, valid values: echo, random
-	Mode string `yaml:"mode"`
+	Mode string `yaml:"mode" json:"mode"`
 	// Seed defines random seed for operations
-	Seed int64 `yaml:"seed"`
+	Seed int64 `yaml:"seed" json:"seed"`
 
 	// MaxToolCallIntegerParam defines the maximum possible value of integer parameters in a tool call,
 	// optional, defaults to 100
-	MaxToolCallIntegerParam int `yaml:"max-tool-call-integer-param"`
+	MaxToolCallIntegerParam int `yaml:"max-tool-call-integer-param" json:"max-tool-call-integer-param"`
 	// MinToolCallIntegerParam defines the minimum possible value of integer parameters in a tool call,
 	// optional, defaults to 0
-	MinToolCallIntegerParam int `yaml:"min-tool-call-integer-param"`
+	MinToolCallIntegerParam int `yaml:"min-tool-call-integer-param" json:"min-tool-call-integer-param"`
 	// MaxToolCallNumberParam defines the maximum possible value of number (float) parameters in a tool call,
 	// optional, defaults to 100
-	MaxToolCallNumberParam float64 `yaml:"max-tool-call-number-param"`
+	MaxToolCallNumberParam float64 `yaml:"max-tool-call-number-param" json:"max-tool-call-number-param"`
 	// MinToolCallNumberParam defines the minimum possible value of number (float) parameters in a tool call,
 	// optional, defaults to 0
-	MinToolCallNumberParam float64 `yaml:"min-tool-call-number-param"`
+	MinToolCallNumberParam float64 `yaml:"min-tool-call-number-param" json:"min-tool-call-number-param"`
 
 	// MaxToolCallArrayParamLength defines the maximum possible length of array parameters in a tool call,
 	// optional, defaults to 5
-	MaxToolCallArrayParamLength int `yaml:"max-tool-call-array-param-length"`
+	MaxToolCallArrayParamLength int `yaml:"max-tool-call-array-param-length" json:"max-tool-call-array-param-length"`
 	// MinToolCallArrayParamLength defines the minimum possible length of array parameters in a tool call,
 	// optional, defaults to 1
-	MinToolCallArrayParamLength int `yaml:"min-tool-call-array-param-length"`
+	MinToolCallArrayParamLength int `yaml:"min-tool-call-array-param-length" json:"min-tool-call-array-param-length"`
 
 	// ToolCallNotRequiredParamProbability is the probability to add a parameter, that is not required,
 	// in a tool call, optional, defaults to 50
-	ToolCallNotRequiredParamProbability int `yaml:"tool-call-not-required-param-probability"`
+	ToolCallNotRequiredParamProbability int `yaml:"tool-call-not-required-param-probability" json:"tool-call-not-required-param-probability"`
 	// ObjectToolCallNotRequiredParamProbability is the probability to add a field, that is not required,
 	// in an object in a tool call, optional, defaults to 50
-	ObjectToolCallNotRequiredParamProbability int `yaml:"object-tool-call-not-required-field-probability"`
+	ObjectToolCallNotRequiredParamProbability int `yaml:"object-tool-call-not-required-field-probability" json:"object-tool-call-not-required-field-probability"`
 
 	// EnableKVCache defines if kv cache feature will be enabled
-	EnableKVCache bool `yaml:"enable-kvcache"`
+	EnableKVCache bool `yaml:"enable-kvcache" json:"enable-kvcache"`
 	//  KVCacheSize is the maximum number of token blocks in kv cache, the default value is 1024
-	KVCacheSize int `yaml:"kv-cache-size"`
+	KVCacheSize int `yaml:"kv-cache-size" json:"kv-cache-size"`
 
 	// TokenizersCacheDir is the directory for caching tokenizers
-	TokenizersCacheDir string `yaml:"tokenizers-cache-dir"`
+	TokenizersCacheDir string `yaml:"tokenizers-cache-dir" json:"tokenizers-cache-dir"`
 	// TokenBlockSize is token block size for contiguous chunks of tokens, possible values: 8,16,32,64,128, defaults to 16
-	TokenBlockSize int `yaml:"block-size"`
+	TokenBlockSize int `yaml:"block-size" json:"block-size"`
 	// HashSeed is the seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)
-	HashSeed string `yaml:"hash-seed"`
+	HashSeed string `yaml:"hash-seed" json:"hash-seed"`
 
 	// ZMQEndpoint is the ZMQ address to publish events, the default value is tcp://localhost:5557
-	ZMQEndpoint string `yaml:"zmq-endpoint"`
+	ZMQEndpoint string `yaml:"zmq-endpoint" json:"zmq-endpoint"`
+	// ZMQMaxConnectAttempts defines the maximum number (10) of retries when ZMQ connection fails
+	ZMQMaxConnectAttempts uint `yaml:"zmq-max-connect-attempts" json:"zmq-max-connect-attempts"`
+
 	// EventBatchSize is the maximum number of kv-cache events to be sent together, defaults to 16
-	EventBatchSize int `yaml:"event-batch-size"`
+	EventBatchSize int `yaml:"event-batch-size" json:"event-batch-size"`
+
+	// FakeMetrics is a set of metrics to send to Prometheus instead of the real data
+	FakeMetrics *Metrics `yaml:"fake-metrics" json:"fake-metrics"`
+
+	// FailureInjectionRate is the probability (0-100) of injecting failures
+	FailureInjectionRate int `yaml:"failure-injection-rate" json:"failure-injection-rate"`
+	// FailureTypes is a list of specific failure types to inject (empty means all types)
+	FailureTypes []string `yaml:"failure-types" json:"failure-types"`
+}
+
+type Metrics struct {
+	// LoraMetrics
+	LoraMetrics []LorasMetrics `json:"loras"`
+	LorasString []string       `yaml:"loras"`
+	// RunningRequests is the number of inference requests that are currently being processed
+	RunningRequests int64 `yaml:"running-requests" json:"running-requests"`
+	// WaitingRequests is the number of inference requests that are waiting to be processed
+	WaitingRequests int64 `yaml:"waiting-requests" json:"waiting-requests"`
+	// KVCacheUsagePercentage  is the fraction of KV-cache blocks currently in use (from 0 to 1)
+	KVCacheUsagePercentage float32 `yaml:"kv-cache-usage" json:"kv-cache-usage"`
+}
+
+type LorasMetrics struct {
+	// RunningLoras is a comma separated list of running LoRAs
+	RunningLoras string `json:"running"`
+	// WaitingLoras is a comma separated list of waiting LoRAs
+	WaitingLoras string `json:"waiting"`
+	// Timestamp is the timestamp of the metric
+	Timestamp float64 `json:"timestamp"`
 }
 
 type LoraModule struct {
@@ -168,6 +208,29 @@ func (c *Configuration) unmarshalLoras() error {
 	return nil
 }
 
+func (c *Configuration) unmarshalFakeMetrics(fakeMetricsString string) error {
+	var metrics *Metrics
+	if err := json.Unmarshal([]byte(fakeMetricsString), &metrics); err != nil {
+		return err
+	}
+	c.FakeMetrics = metrics
+	return nil
+}
+
+func (c *Configuration) unmarshalLoraFakeMetrics() error {
+	if c.FakeMetrics != nil {
+		c.FakeMetrics.LoraMetrics = make([]LorasMetrics, 0)
+		for _, jsonStr := range c.FakeMetrics.LorasString {
+			var lora LorasMetrics
+			if err := json.Unmarshal([]byte(jsonStr), &lora); err != nil {
+				return err
+			}
+			c.FakeMetrics.LoraMetrics = append(c.FakeMetrics.LoraMetrics, lora)
+		}
+	}
+	return nil
+}
+
 func newConfig() *Configuration {
 	return &Configuration{
 		Port:                                vLLMDefaultPort,
@@ -199,7 +262,14 @@ func (c *Configuration) load(configFile string) error {
 		return fmt.Errorf("failed to unmarshal configuration: %s", err)
 	}
 
-	return c.unmarshalLoras()
+	if err := c.unmarshalLoras(); err != nil {
+		return err
+	}
+	if err := c.unmarshalLoraFakeMetrics(); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *Configuration) validate() error {
@@ -299,6 +369,39 @@ func (c *Configuration) validate() error {
 	if c.EventBatchSize < 1 {
 		return errors.New("event batch size cannot less than 1")
 	}
+
+	if c.FailureInjectionRate < 0 || c.FailureInjectionRate > 100 {
+		return errors.New("failure injection rate should be between 0 and 100")
+	}
+
+	validFailureTypes := map[string]bool{
+		FailureTypeRateLimit:      true,
+		FailureTypeInvalidAPIKey:  true,
+		FailureTypeContextLength:  true,
+		FailureTypeServerError:    true,
+		FailureTypeInvalidRequest: true,
+		FailureTypeModelNotFound:  true,
+	}
+	for _, failureType := range c.FailureTypes {
+		if !validFailureTypes[failureType] {
+			return fmt.Errorf("invalid failure type '%s', valid types are: %s, %s, %s, %s, %s, %s", failureType,
+				FailureTypeRateLimit, FailureTypeInvalidAPIKey, FailureTypeContextLength,
+				FailureTypeServerError, FailureTypeInvalidRequest, FailureTypeModelNotFound)
+		}
+	}
+
+	if c.ZMQMaxConnectAttempts > 10 {
+		return errors.New("zmq retries times cannot be more than 10")
+	}
+
+	if c.FakeMetrics != nil {
+		if c.FakeMetrics.RunningRequests < 0 || c.FakeMetrics.WaitingRequests < 0 {
+			return errors.New("fake metrics request counters cannot be negative")
+		}
+		if c.FakeMetrics.KVCacheUsagePercentage < 0 || c.FakeMetrics.KVCacheUsagePercentage > 1 {
+			return errors.New("fake metrics KV cache usage must be between 0 ans 1")
+		}
+	}
 	return nil
 }
 
@@ -316,6 +419,7 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 
 	servedModelNames := getParamValueFromArgs("served-model-name")
 	loraModuleNames := getParamValueFromArgs("lora-modules")
+	fakeMetrics := getParamValueFromArgs("fake-metrics")
 
 	f := pflag.NewFlagSet("llm-d-inference-sim flags", pflag.ContinueOnError)
 
@@ -326,7 +430,7 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.IntVar(&config.MaxCPULoras, "max-cpu-loras", config.MaxCPULoras, "Maximum number of LoRAs to store in CPU memory")
 	f.IntVar(&config.MaxModelLen, "max-model-len", config.MaxModelLen, "Model's context window, maximum number of tokens in a single request including input and output")
 
-	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode, echo - returns the same text that was sent in the request, for chat completion returns the last message, random - returns random sentence from a bank of pre-defined sentences")
+	f.StringVar(&config.Mode, "mode", config.Mode, "Simulator mode: echo - returns the same text that was sent in the request, for chat completion returns the last message; random - returns random sentence from a bank of pre-defined sentences")
 	f.IntVar(&config.InterTokenLatency, "inter-token-latency", config.InterTokenLatency, "Time to generate one token (in milliseconds)")
 	f.IntVar(&config.TimeToFirstToken, "time-to-first-token", config.TimeToFirstToken, "Time to first token (in milliseconds)")
 	f.IntVar(&config.KVCacheTransferLatency, "kv-cache-transfer-latency", config.KVCacheTransferLatency, "Time for KV-cache transfer from a remote vLLM (in milliseconds)")
@@ -350,7 +454,15 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	f.StringVar(&config.TokenizersCacheDir, "tokenizers-cache-dir", config.TokenizersCacheDir, "Directory for caching tokenizers")
 	f.StringVar(&config.HashSeed, "hash-seed", config.HashSeed, "Seed for hash generation (if not set, is read from PYTHONHASHSEED environment variable)")
 	f.StringVar(&config.ZMQEndpoint, "zmq-endpoint", config.ZMQEndpoint, "ZMQ address to publish events")
+	f.UintVar(&config.ZMQMaxConnectAttempts, "zmq-max-connect-attempts", config.ZMQMaxConnectAttempts, "Maximum number of times to try ZMQ connect")
 	f.IntVar(&config.EventBatchSize, "event-batch-size", config.EventBatchSize, "Maximum number of kv-cache events to be sent together")
+
+	f.IntVar(&config.FailureInjectionRate, "failure-injection-rate", config.FailureInjectionRate, "Probability (0-100) of injecting failures")
+
+	failureTypes := getParamValueFromArgs("failure-types")
+	var dummyFailureTypes multiString
+	f.Var(&dummyFailureTypes, "failure-types", "List of specific failure types to inject (rate_limit, invalid_api_key, context_length, server_error, invalid_request, model_not_found)")
+	f.Lookup("failure-types").NoOptDefVal = dummy
 
 	// These values were manually parsed above in getParamValueFromArgs, we leave this in order to get these flags in --help
 	var dummyString string
@@ -358,9 +470,11 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 	var dummyMultiString multiString
 	f.Var(&dummyMultiString, "served-model-name", "Model names exposed by the API (a list of space-separated strings)")
 	f.Var(&dummyMultiString, "lora-modules", "List of LoRA adapters (a list of space-separated JSON strings)")
+	f.Var(&dummyMultiString, "fake-metrics", "A set of metrics to report to Prometheus instead of the real metrics")
 	// In order to allow empty arguments, we set a dummy NoOptDefVal for these flags
-	f.Lookup("served-model-name").NoOptDefVal = "dummy"
-	f.Lookup("lora-modules").NoOptDefVal = "dummy"
+	f.Lookup("served-model-name").NoOptDefVal = dummy
+	f.Lookup("lora-modules").NoOptDefVal = dummy
+	f.Lookup("fake-metrics").NoOptDefVal = dummy
 
 	flagSet := flag.NewFlagSet("simFlagSet", flag.ExitOnError)
 	klog.InitFlags(flagSet)
@@ -381,8 +495,16 @@ func ParseCommandParamsAndLoadConfig() (*Configuration, error) {
 			return nil, err
 		}
 	}
+	if fakeMetrics != nil {
+		if err := config.unmarshalFakeMetrics(fakeMetrics[0]); err != nil {
+			return nil, err
+		}
+	}
 	if servedModelNames != nil {
 		config.ServedModelNames = servedModelNames
+	}
+	if failureTypes != nil {
+		config.FailureTypes = failureTypes
 	}
 
 	if config.HashSeed == "" {

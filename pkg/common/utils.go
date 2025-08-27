@@ -244,6 +244,13 @@ func RandomNorm(mean float64, stddev float64) float64 {
 	return value
 }
 
+// GenerateUUIDString generates a UUID string under a lock
+func GenerateUUIDString() string {
+	randMutex.Lock()
+	defer randMutex.Unlock()
+	return uuid.NewString()
+}
+
 // Regular expression for the response tokenization
 var re *regexp.Regexp
 
