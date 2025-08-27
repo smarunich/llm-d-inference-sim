@@ -143,9 +143,9 @@ type Configuration struct {
 	FakeMetrics *Metrics `yaml:"fake-metrics" json:"fake-metrics"`
 
 	// FailureInjectionRate is the probability (0-100) of injecting failures
-	FailureInjectionRate int `yaml:"failure-injection-rate"`
+	FailureInjectionRate int `yaml:"failure-injection-rate" json:"failure-injection-rate"`
 	// FailureTypes is a list of specific failure types to inject (empty means all types)
-	FailureTypes []string `yaml:"failure-types"`
+	FailureTypes []string `yaml:"failure-types" json:"failure-types"`
 }
 
 type Metrics struct {
